@@ -15,7 +15,7 @@
       --text-muted: #57606a;
       --accent: #0969da;
       --accent-bg: #ddf4ff;
-      --radius: 10px;
+      --radius: 8px;
       --shadow: 0 1px 3px rgba(0,0,0,.08);
       --shadow-hover: 0 4px 12px rgba(0,0,0,.1);
     }
@@ -36,42 +36,42 @@
     }
     .popup-header {
       flex-shrink: 0;
-      padding: 14px 18px;
+      padding: 10px 14px;
       background: var(--header-bg);
       color: var(--header-text);
     }
     .popup-header h1 {
       margin: 0;
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 600;
       letter-spacing: -0.01em;
     }
     .popup-header p {
-      margin: 4px 0 0;
-      font-size: 0.8rem;
+      margin: 2px 0 0;
+      font-size: 0.72rem;
       opacity: 0.9;
     }
     .popup-body {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 10px;
     }
     .shortcut-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 6px;
     }
     .shortcut-item {
       display: block;
       width: 100%;
-      padding: 14px 16px;
+      padding: 8px 10px;
       border: 1px solid var(--card-border);
-      border-radius: var(--radius);
+      border-radius: 8px;
       background: var(--card-bg);
       color: var(--text);
       text-align: left;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 12px;
       transition: box-shadow .2s, border-color .2s;
       box-shadow: var(--shadow);
     }
@@ -82,51 +82,51 @@
     .shortcut-item .label-row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
+      gap: 6px;
+      margin-bottom: 3px;
     }
     .shortcut-item .shortcut-pill {
       flex-shrink: 0;
-      padding: 3px 10px;
-      border-radius: 14px;
+      padding: 2px 6px;
+      border-radius: 10px;
       background: var(--accent-bg);
       color: var(--accent);
-      font-size: 0.8rem;
+      font-size: 0.7rem;
       font-weight: 600;
     }
     .shortcut-item .command-name {
       font-weight: 600;
-      font-size: 0.95rem;
+      font-size: 0.85rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .shortcut-item .preview {
-      font-size: 0.85rem;
+      font-size: 0.75rem;
       color: var(--text-muted);
-      line-height: 1.4;
+      line-height: 1.3;
       overflow: hidden;
       text-overflow: ellipsis;
       display: -webkit-box;
-      -webkit-line-clamp: 2;
+      -webkit-line-clamp: 1;
       -webkit-box-orient: vertical;
     }
     .loading {
-      padding: 24px;
+      padding: 16px;
       text-align: center;
       color: var(--text-muted);
-      font-size: 0.9rem;
+      font-size: 0.8rem;
     }
     .empty-msg {
-      padding: 24px 16px;
+      padding: 16px 12px;
       text-align: center;
       color: var(--text-muted);
-      font-size: 0.9rem;
-      line-height: 1.5;
+      font-size: 0.8rem;
+      line-height: 1.4;
     }
     .popup-footer {
       flex-shrink: 0;
-      padding: 12px 18px;
+      padding: 8px 14px;
       border-top: 1px solid var(--card-border);
       background: var(--card-bg);
     }
@@ -136,7 +136,7 @@
       gap: 6px;
       color: var(--accent);
       text-decoration: none;
-      font-size: 0.9rem;
+      font-size: 0.8rem;
       font-weight: 500;
     }
     .popup-footer a:hover { text-decoration: underline; }

@@ -484,6 +484,14 @@ async function saveShortcut() {
     showMsg("shortcutListMsg", "กรุณาเลือกโฟลเดอร์", true);
     return;
   }
+  const keyLower = shortcut_key.toLowerCase().trim();
+  const duplicate = shortcuts.find(
+    (s) => s.id !== id && (s.shortcut_key || "").toLowerCase().trim() === keyLower
+  );
+  if (duplicate) {
+    showMsg("shortcutListMsg", "คำลัดนี้มีอยู่แล้ว (ซ้ำกับ \"" + (duplicate.command_name || "") + "\") กรุณาใช้คำลัดอื่น", true);
+    return;
+  }
   const body = { command_name, shortcut_key, action_text, is_global: true, folder_id };
   if (id) {
     body.updated_at = new Date().toISOString();
