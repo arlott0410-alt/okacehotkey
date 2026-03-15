@@ -1,130 +1,120 @@
-// ===================== background.js =====================
-const BASE = "http://localhost:3000/api";
-const RETRIES = 2;
-const CACHE_DURATION = 1000 * 60 * 60 * 12; // 12 ชั่วโมง
+// ===================== background.js (Supabase) =====================
+const CACHE_KEY_SHORTCUTS = "shortcuts_cache";
+const CACHE_KEY_TS = "shortcuts_cache_ts";
+const CACHE_DURATION_MS = 1000 * 60 * 5; // 5 นาที
+const CONFIG_KEYS = ["supabase_url", "supabase_anon_key", "supabase_session"];
 
-const cache = {
-  siteMap: { ts: 0, data: null },
-  snippetsBySite: new Map(),
-};
+let inMemoryShortcuts = null;
+let lastFetchTs = 0;
 
-const pending = new Map();
+// ===================== Config =====================
+async function getConfig() {
+  const o = await chrome.storage.local.get(["supabase_url", "supabase_anon_key", "supabase_session"]);
+  const url = (o.supabase_url || "").replace(/\/$/, "");
+  const anonKey = o.supabase_anon_key || "";
+  const session = o.supabase_session || null;
+  return { url, anonKey, session };
+}
 
-// ===================== API Helper =====================
-async function fetchJSON(path, opts = {}, tries = RETRIES) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), opts.timeout ?? 20000);
+function getAuthHeader(session) {
+  if (session?.access_token) return { Authorization: `Bearer ${session.access_token}` };
+  return {};
+}
 
-  try {
-    const headers = { ...(opts.headers || {}) };
-    // Avoid CORS preflight on GET/HEAD by not forcing Content-Type.
-    if (opts.body && !("Content-Type" in headers) && !("content-type" in headers)) {
-      headers["Content-Type"] = "application/json";
-    }
-    const res = await fetch(`${BASE}${path}`, {
-      headers,
-      signal: controller.signal,
-      cache: "no-store",
-      ...opts,
-    });
-
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    return await res.json();
-  } catch (e) {
-    if (tries > 0) {
-      await new Promise(r => setTimeout(r, 300));
-      return fetchJSON(path, opts, tries - 1);
-    }
-    throw e;
-  } finally {
-    clearTimeout(timeout);
+// ===================== Supabase REST (fetch) =====================
+async function supabaseFetch(url, anonKey, session, path, opts = {}) {
+  const fullUrl = `${url}/rest/v1${path}`;
+  const headers = {
+    apikey: anonKey,
+    "Content-Type": "application/json",
+    Prefer: "return=representation",
+    ...getAuthHeader(session),
+    ...(opts.headers || {}),
+  };
+  const res = await fetch(fullUrl, {
+    ...opts,
+    headers: { ...headers, ...opts.headers },
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Supabase ${res.status}: ${errText || res.statusText}`);
   }
+  if (res.status === 204 || res.headers.get("content-length") === "0") return null;
+  return res.json();
 }
 
-// ===================== DEDUPE =====================
-function dedupe(key, fn) {
-  if (pending.has(key)) return pending.get(key);
-  const p = (async () => {
-    try {
-      return await fn();
-    } finally {
-      pending.delete(key);
-    }
-  })();
-  pending.set(key, p);
-  return p;
-}
+// ===================== Load shortcuts from Supabase =====================
+async function loadShortcutsFromSupabase(forceRefresh = false) {
+  const { url, anonKey, session } = await getConfig();
+  if (!url || !anonKey) {
+    console.warn("[BG] Supabase not configured");
+    return [];
+  }
 
-// ===================== Normalizer =====================
-function normalizeSiteMap(raw) {
-  const map = {};
-  if (raw?.data && typeof raw.data === "object" && !Array.isArray(raw.data)) Object.assign(map, raw.data);
-  else if (Array.isArray(raw)) raw.forEach(s => s?._id && s?.name && (map[s._id] = s.name));
-  else if (raw && typeof raw === "object") Object.assign(map, raw);
-  return map;
-}
-
-// ===================== Cache Helper =====================
-async function getCached(key, fetchFn, duration = CACHE_DURATION) {
   const now = Date.now();
-  if (key === "SITE_MAP" && cache.siteMap.data && now - cache.siteMap.ts < duration) return cache.siteMap.data;
-  if (key.startsWith("SNIPPETS_")) {
-    const site = key.slice(10);
-    const mem = cache.snippetsBySite.get(site);
-    if (mem && now - mem.ts < duration) return mem.data;
+  if (!forceRefresh && inMemoryShortcuts && now - lastFetchTs < CACHE_DURATION_MS) {
+    return inMemoryShortcuts;
   }
-
-  const stored = await chrome.storage.local.get(key);
-  if (stored[key]?.ts && now - stored[key].ts < duration) {
-    const data = stored[key].data;
-    if (key === "SITE_MAP") cache.siteMap = { ts: now, data };
-    else cache.snippetsBySite.set(key.slice(10), { ts: now, data });
-    return data;
-  }
-
-  const data = await fetchFn();
-  await chrome.storage.local.set({ [key]: { ts: now, data } });
-  if (key === "SITE_MAP") cache.siteMap = { ts: now, data };
-  else cache.snippetsBySite.set(key.slice(10), { ts: now, data });
-  return data;
-}
-
-// ===================== Invalidate Cache =====================
-async function invalidateCache(site) {
-  const keys = ["SITE_MAP"];
-  if (site) keys.push(`SNIPPETS_${site}`);
-  await chrome.storage.local.remove(keys);
-  cache.siteMap = { ts: 0, data: null };
-  if (site) cache.snippetsBySite.delete(site);
-  if (!site) pending.clear();
-  else pending.delete(`SNIPPETS_${site}`);
-}
-
-// ===================== API Calls =====================
-async function getSiteMap() { return getCached("SITE_MAP", async () => normalizeSiteMap(await fetchJSON("/site-map"))); }
-async function getSnippets(site) {
-  if (!site) throw new Error("Missing site");
-  return getCached(`SNIPPETS_${site}`, () => fetchJSON(`/extension?site=${encodeURIComponent(site)}`));
-}
-
-// ===================== Current Site Helper =====================
-async function ensureCurrentSite() {
-  const { currentSite } = await chrome.storage.local.get("currentSite");
-  if (currentSite) return currentSite;
 
   try {
-    const map = await getSiteMap();
-    const ids = Object.keys(map || {});
-    if (!ids.length) return null;
-    const siteId = ids[0];
-    await chrome.storage.local.set({ currentSite: siteId });
-    return siteId;
+    const rows = await supabaseFetch(url, anonKey, session, "/shortcuts?select=id,command_name,shortcut_key,action_text,is_global", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const list = Array.isArray(rows) ? rows : [];
+    inMemoryShortcuts = list;
+    lastFetchTs = now;
+    await chrome.storage.local.set({
+      [CACHE_KEY_SHORTCUTS]: list,
+      [CACHE_KEY_TS]: now,
+    });
+    return list;
   } catch (e) {
-    return null;
+    console.warn("[BG] loadShortcutsFromSupabase error:", e.message);
+    const cached = await chrome.storage.local.get([CACHE_KEY_SHORTCUTS]);
+    const list = cached[CACHE_KEY_SHORTCUTS];
+    if (Array.isArray(list)) {
+      inMemoryShortcuts = list;
+      return list;
+    }
+    return [];
   }
 }
 
-// ===================== Content Script Injector =====================
+// ===================== Get shortcuts (cache-first) =====================
+async function getShortcuts(forceRefresh = false) {
+  const list = await loadShortcutsFromSupabase(forceRefresh);
+  return list.map((s) => ({
+    id: s.id,
+    command_name: s.command_name,
+    shortcut: s.shortcut_key || "",
+    shortcut_key: s.shortcut_key,
+    content: s.action_text || "",
+    action_text: s.action_text,
+    is_global: !!s.is_global,
+  }));
+}
+
+// ===================== Hydrate from storage on startup =====================
+async function hydrateFromStorage() {
+  const o = await chrome.storage.local.get([CACHE_KEY_SHORTCUTS, CACHE_KEY_TS]);
+  if (Array.isArray(o[CACHE_KEY_SHORTCUTS])) {
+    inMemoryShortcuts = o[CACHE_KEY_SHORTCUTS];
+    lastFetchTs = o[CACHE_KEY_TS] || 0;
+  }
+}
+
+// ===================== Broadcast shortcuts updated =====================
+async function broadcastShortcutsUpdated() {
+  inMemoryShortcuts = null;
+  lastFetchTs = 0;
+  const tabs = await chrome.tabs.query({}).catch(() => []);
+  for (const tab of tabs) {
+    if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: "SHORTCUTS_UPDATED" }).catch(() => {});
+  }
+}
+
+// ===================== Content script injector =====================
 async function ensureContentScript(tabId) {
   if (!tabId) return;
   try {
@@ -132,156 +122,89 @@ async function ensureContentScript(tabId) {
       target: { tabId, allFrames: true },
       files: ["content.js"],
     });
-  } catch (e) {
-    // Ignore if already injected or not allowed
-  }
+  } catch (_) {}
 }
 
-// ===================== CRUD =====================
-async function addSnippet(snippet) {
-  const data = await fetchJSON("/extension", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(snippet),
-  });
-  if (snippet.site) await invalidateCache(snippet.site);
-  return data;
-}
-
-async function deleteSnippet(id) {
-  await fetchJSON(`/extension/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-// ===================== Broadcast =====================
-async function broadcast(type, payload) {
-  const tabs = await chrome.tabs.query({});
-  await Promise.allSettled(
-    tabs.map(tab => chrome.tabs.sendMessage(tab.id, { type, payload }).catch(() => {}))
-  );
-}
-
-// ===================== Auto-set current site =====================
-async function applyCurrentSiteToTab(tabId) {
-  if (!tabId) return;
-
-  try {
-    const currentSite = await ensureCurrentSite();
-    if (currentSite) {
-      await ensureContentScript(tabId);
-      await chrome.tabs.sendMessage(tabId, {
-        type: "SET_CURRENT_SITE",
-        site: currentSite,
-      }).catch(() => {});
-    }
-  } catch (e) {}
-}
-
-// เมื่อ tab ถูก activate
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  applyCurrentSiteToTab(activeInfo.tabId);
-});
-
-// เมื่อ tab โหลดเสร็จ
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status !== "complete") return;
-  ensureContentScript(tabId);
-  applyCurrentSiteToTab(tabId);
-});
-
-// เมื่อ extension ติดตั้ง/อัปเดต
+// ===================== Install / Startup =====================
 chrome.runtime.onInstalled.addListener(async () => {
-  await ensureCurrentSite();
-  const tabs = await chrome.tabs.query({});
-  for (const tab of tabs) applyCurrentSiteToTab(tab.id);
+  await hydrateFromStorage();
+  const { url, anonKey } = await getConfig();
+  if (url && anonKey) await loadShortcutsFromSupabase(true);
 });
 
-// เมื่อ Chrome เริ่มใหม่
 chrome.runtime.onStartup.addListener(async () => {
-  await ensureCurrentSite();
-  const tabs = await chrome.tabs.query({});
-  for (const tab of tabs) applyCurrentSiteToTab(tab.id);
+  await hydrateFromStorage();
+  const { url, anonKey } = await getConfig();
+  if (url && anonKey) await loadShortcutsFromSupabase(true);
 });
 
-// เมื่อ currentSite ถูกเปลี่ยนจาก popup
-chrome.storage.onChanged.addListener(async (changes, area) => {
-  if (area === "local" && changes.currentSite) {
-    const newSite = changes.currentSite.newValue;
-    console.log("[BACKGROUND] currentSite changed to:", newSite);
-    
-    if (!newSite) return;
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "complete") ensureContentScript(tabId);
+});
 
-    const tabs = await chrome.tabs.query({});
-    console.log("[BACKGROUND] Broadcasting SET_CURRENT_SITE to", tabs.length, "tabs");
-    
-    for (const tab of tabs) {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, {
-          type: "SET_CURRENT_SITE",
-          site: newSite,
-        }).then(() => {
-          console.log("[BACKGROUND] Sent SET_CURRENT_SITE to tab:", tab.id);
-        }).catch((err) => {
-          console.warn("[BACKGROUND] Failed to send to tab:", tab.id, err.message);
-        });
-      }
-    }
+// ===================== Chrome commands (keyboard shortcuts) =====================
+chrome.commands.onCommand.addListener(async (commandName) => {
+  const list = await getShortcuts(false);
+  const row = list.find((s) => (s.command_name || "").toLowerCase() === String(commandName).toLowerCase());
+  const text = row ? (row.action_text ?? row.content ?? "") : "";
+  if (!text) return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+  if (tab?.id) {
+    await ensureContentScript(tab.id);
+    chrome.tabs.sendMessage(tab.id, { type: "INSERT_TEXT", text }).catch(() => {});
   }
 });
 
-// ===================== Message Router =====================
+// ===================== Message router =====================
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       switch (msg?.type) {
-        case "GET_SITE_MAP":
-          sendResponse({ ok: true, data: await getSiteMap() });
-          break;
-
-        case "GET_SNIPPETS":
-          sendResponse({ ok: true, data: await getSnippets(msg.site) });
-          break;
-
-        case "GET_CURRENT_SITE": {
-          const { currentSite } = await chrome.storage.local.get("currentSite");
-          sendResponse({ ok: true, data: { site: currentSite } });
+        case "GET_SHORTCUTS": {
+          const list = await getShortcuts(!!msg.forceRefresh);
+          sendResponse({ ok: true, data: list });
           break;
         }
-
-        case "ADD_SNIPPET": {
-          const res = await addSnippet(msg.snippet);
-          await broadcast("SNIPPETS_UPDATED", { site: msg.snippet?.site });
-          await chrome.storage.local.set({ snippetsUpdatedAt: Date.now() });
-          sendResponse({ ok: true, data: res });
+        case "GET_ACTION_BY_COMMAND": {
+          const list = await getShortcuts(false);
+          const row = list.find((s) => (s.command_name || "").toLowerCase() === (msg.commandName || "").toLowerCase());
+          sendResponse({ ok: true, data: row ? row.action_text : null });
           break;
         }
-
-        case "DELETE_SNIPPET": {
-          await deleteSnippet(msg.id);
-          if (msg.site) await invalidateCache(msg.site);
-          await broadcast("SNIPPETS_UPDATED", { site: msg.site });
-          await chrome.storage.local.set({ snippetsUpdatedAt: Date.now() });
+        case "GET_ACTION_BY_SHORTCUT_KEY": {
+          const list = await getShortcuts(false);
+          const key = (msg.shortcutKey || "").toLowerCase().trim();
+          const row = list.find((s) => (s.shortcut_key || "").toLowerCase().trim() === key);
+          sendResponse({ ok: true, data: row ? row.action_text : null });
+          break;
+        }
+        case "REFRESH_SHORTCUTS": {
+          await loadShortcutsFromSupabase(true);
+          await broadcastShortcutsUpdated();
           sendResponse({ ok: true });
           break;
         }
-
-        case "REFRESH_CACHE": {
-          await chrome.storage.local.clear();
-          cache.siteMap = { ts: 0, data: null };
-          cache.snippetsBySite.clear();
-          pending.clear();
-          await chrome.storage.local.set({ snippetsUpdatedAt: Date.now() });
+        case "SAVE_CONFIG": {
+          await chrome.storage.local.set({
+            supabase_url: msg.supabase_url || "",
+            supabase_anon_key: msg.supabase_anon_key || "",
+          });
+          if (msg.supabase_session != null) await chrome.storage.local.set({ supabase_session: msg.supabase_session });
           sendResponse({ ok: true });
           break;
         }
-
+        case "GET_CONFIG": {
+          const c = await getConfig();
+          sendResponse({ ok: true, data: { url: c.url, anonKey: c.anonKey, hasSession: !!c.session } });
+          break;
+        }
         default:
           sendResponse({ ok: false, error: "Unknown type" });
       }
     } catch (err) {
-      console.error("[BACKGROUND ERROR]", err);
+      console.error("[BG]", err);
       sendResponse({ ok: false, error: err.message || String(err) });
     }
   })();
-
   return true;
 });

@@ -18,15 +18,17 @@ create table if not exists public.snippets (
 alter table public.sites enable row level security;
 alter table public.snippets enable row level security;
 
--- นโยบาย: ให้ service_role ใช้ได้เต็ม (Edge Function ใช้ service_role)
--- ถ้าอยากให้ anon เรียกจาก extension โดยตรง ให้สร้าง policy สำหรับ anon
-create policy "Allow all for service role"
+-- นโยบาย: ให้ทุก role (anon, authenticated, service_role) อ่าน/เขียนได้
+-- ถ้าต้องการจำกัดให้เฉพาะ authenticated ภายหลังให้แก้ TO role
+create policy "Allow all on sites"
   on public.sites for all
+  to public
   using (true)
   with check (true);
 
-create policy "Allow all for service role"
+create policy "Allow all on snippets"
   on public.snippets for all
+  to public
   using (true)
   with check (true);
 

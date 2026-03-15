@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "คีย์ลัด (789BET Shortcuts)",
-  "description": "ส่วนขยายคีย์ลัดบนเว็บไซต์",
-  "version": "1.2.2",
+  "name": "คีย์ลัด (Text Expansion)",
+  "description": "ส่วนขยายคีย์ลัดบนเว็บไซต์ - sync กับ Supabase",
+  "version": "2.0.0",
 
   "icons": {
     "16": "icons/icon16.png",
@@ -22,6 +22,11 @@
     }
   },
 
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+
   "background": {
     "service_worker": "background.js"
   },
@@ -34,7 +39,8 @@
   ],
 
   "host_permissions": [
-    "http://localhost:3000/*"
+    "https://*.supabase.co/*",
+    "https://esm.sh/*"
   ],
 
   "content_scripts": [
@@ -47,6 +53,12 @@
       "run_at": "document_start"
     }
   ],
+
+  "commands": {
+    "paste-1": { "suggested_key": { "default": "Ctrl+Shift+1" }, "description": "Paste shortcut 1" },
+    "paste-2": { "suggested_key": { "default": "Ctrl+Shift+2" }, "description": "Paste shortcut 2" },
+    "paste-3": { "suggested_key": { "default": "Ctrl+Shift+3" }, "description": "Paste shortcut 3" }
+  },
 
   "web_accessible_resources": [
     {

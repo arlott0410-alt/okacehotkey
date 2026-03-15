@@ -1,16 +1,7 @@
-// handlers.js
+// handlers.js – ใช้ shortcuts จาก Supabase (shortcut_key / action_text) + พิมพ์คำลัดหรือคีย์ลัด
 import { showConfetti } from "./confetti.js";
-import {
-  cachedSnippets,
-  snippetsLoaded,
-  snippetsLoading,
-  loadSnippets
-} from "./snippets.js";
-import {
-  getFocusedInput,
-  isSnippetEditorField,
-  insertTextAtCursorImmediate
-} from "./dom-utils.js";
+import { cachedSnippets, snippetsLoaded, snippetsLoading, loadSnippets } from "./snippets.js";
+import { getFocusedInput, isSnippetEditorField, insertTextAtCursorImmediate } from "./dom-utils.js";
 
 let isProcessing = false;
 
@@ -20,9 +11,7 @@ export async function handleKeyDown(e) {
   if (!el || isSnippetEditorField(el)) return;
 
   if (!snippetsLoaded) {
-    if (!snippetsLoading) {
-      loadSnippets().catch(() => {});
-    }
+    if (!snippetsLoading) loadSnippets().catch(() => {});
     return;
   }
 
@@ -38,15 +27,14 @@ export async function handleKeyDown(e) {
   if (!["control", "shift", "alt", "meta"].includes(key)) parts.push(key);
 
   const combo = parts.join("+");
-  const match = snippets.find(
-    (s) => s.shortcut?.toLowerCase() === combo
-  );
+  const match = snippets.find((s) => (s.shortcut_key || s.shortcut || "").toLowerCase() === combo);
   if (!match) return;
 
   e.preventDefault();
   e.stopPropagation();
   isProcessing = true;
-  insertTextAtCursorImmediate(el, match.content);
+  const text = match.action_text ?? match.content ?? "";
+  insertTextAtCursorImmediate(el, text);
   showConfetti(el);
   isProcessing = false;
 }
@@ -59,24 +47,20 @@ export async function handleInput(e) {
   if (!el || isSnippetEditorField(el)) return;
 
   if (!snippetsLoaded) {
-    if (!snippetsLoading) {
-      loadSnippets().catch(() => {});
-    }
+    if (!snippetsLoading) loadSnippets().catch(() => {});
     return;
   }
 
   const snippets = cachedSnippets;
   if (!snippets.length) return;
 
-  const val = el.isContentEditable
-    ? el.innerText ?? el.textContent ?? ""
-    : el.value ?? "";
+  const val = el.isContentEditable ? el.innerText ?? el.textContent ?? "" : el.value ?? "";
   if (!val) return;
 
   let match = null;
   const lower = val.toLowerCase();
   for (const s of snippets) {
-    const trigger = (s.shortcut || "").toLowerCase();
+    const trigger = (s.shortcut_key || s.shortcut || "").toLowerCase();
     if (!trigger) continue;
     if (lower.endsWith(trigger)) {
       const startPos = lower.length - trigger.length;
@@ -90,11 +74,9 @@ export async function handleInput(e) {
 
   if (match) {
     isProcessing = true;
-    insertTextAtCursorImmediate(
-      el,
-      match.content,
-      match.shortcut.length
-    );
+    const text = match.action_text ?? match.content ?? "";
+    const triggerLen = (match.shortcut_key || match.shortcut || "").length;
+    insertTextAtCursorImmediate(el, text, triggerLen);
     showConfetti(el);
     isProcessing = false;
   }
