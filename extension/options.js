@@ -1,6 +1,4 @@
-// options.js – Supabase Auth + CRUD shortcuts (ใช้ใน options page เท่านั้น)
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
+// options.js – Supabase Auth + CRUD shortcuts (ใช้เฉพาะ fetch ไม่โหลด script จากภายนอก)
 const $ = (id) => document.getElementById(id);
 const showMsg = (elId, text, isError) => {
   const el = $(elId);
@@ -9,51 +7,103 @@ const showMsg = (elId, text, isError) => {
   el.className = "msg " + (text ? (isError ? "err" : "ok") : "");
 };
 
-let supabase = null;
+let config = { url: "", anonKey: "", session: null };
 
 function getConfigFromForm() {
   return {
-    supabase_url: ($("supabaseUrl")?.value || "").trim().replace(/\/$/, ""),
-    supabase_anon_key: ($("supabaseAnonKey")?.value || "").trim(),
+    url: ($("supabaseUrl")?.value || "").trim().replace(/\/$/, ""),
+    anonKey: ($("supabaseAnonKey")?.value || "").trim(),
   };
 }
 
 async function loadStoredConfig() {
-  const o = await chrome.storage.local.get(["supabase_url", "supabase_anon_key"]);
+  const o = await chrome.storage.local.get(["supabase_url", "supabase_anon_key", "supabase_session"]);
   if ($("supabaseUrl")) $("supabaseUrl").value = o.supabase_url || "";
   if ($("supabaseAnonKey")) $("supabaseAnonKey").value = o.supabase_anon_key || "";
+  config = { url: o.supabase_url || "", anonKey: o.supabase_anon_key || "", session: o.supabase_session || null };
 }
 
 async function saveConfig() {
-  const { supabase_url, supabase_anon_key } = getConfigFromForm();
-  if (!supabase_url || !supabase_anon_key) {
+  const { url, anonKey } = getConfigFromForm();
+  if (!url || !anonKey) {
     showMsg("configMsg", "กรุณาใส่ URL และ Anon Key", true);
     return;
   }
-  await chrome.storage.local.set({ supabase_url, supabase_anon_key });
-  chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_url, supabase_anon_key }).catch(() => {});
+  await chrome.storage.local.set({ supabase_url: url, supabase_anon_key: anonKey });
+  chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_url: url, supabase_anon_key: anonKey }).catch(() => {});
   showMsg("configMsg", "บันทึกแล้ว", false);
-  initSupabase();
+  config.url = url;
+  config.anonKey = anonKey;
 }
 
-function initSupabase() {
-  const { supabase_url, supabase_anon_key } = getConfigFromForm();
-  if (!supabase_url || !supabase_anon_key) {
-    supabase = null;
-    return;
+// ---- Supabase REST (fetch only) ----
+function headers(includeAuth = false) {
+  const h = { apikey: config.anonKey, "Content-Type": "application/json", Prefer: "return=representation" };
+  if (includeAuth && config.session?.access_token) h["Authorization"] = "Bearer " + config.session.access_token;
+  return h;
+}
+
+async function authSignIn(email, password) {
+  const res = await fetch(config.url + "/auth/v1/token?grant_type=password", {
+    method: "POST",
+    headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.msg || data.error_description || "เข้าสู่ระบบไม่สำเร็จ");
+  return data;
+}
+
+async function authGetUser() {
+  if (!config.session?.access_token) return null;
+  const res = await fetch(config.url + "/auth/v1/user", {
+    headers: { apikey: config.anonKey, Authorization: "Bearer " + config.session.access_token },
+  });
+  const data = await res.json();
+  if (!res.ok) return null;
+  return data;
+}
+
+async function authLogout() {
+  if (!config.session?.access_token) return;
+  await fetch(config.url + "/auth/v1/logout", {
+    method: "POST",
+    headers: { apikey: config.anonKey, "Content-Type": "application/json", Authorization: "Bearer " + config.session.access_token },
+    body: JSON.stringify({ refresh_token: config.session.refresh_token || "" }),
+  }).catch(() => {});
+}
+
+async function restShortcuts(method, body = null, id = null) {
+  const url = id
+    ? config.url + "/rest/v1/shortcuts?id=eq." + encodeURIComponent(id)
+    : config.url + "/rest/v1/shortcuts";
+  const opts = { method, headers: headers(true) };
+  if (body && (method === "POST" || method === "PATCH")) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.msg || res.statusText);
   }
-  supabase = createClient(supabase_url, supabase_anon_key);
+  if (res.status === 204 || res.headers.get("content-length") === "0") return null;
+  return res.json();
+}
+
+async function fetchShortcuts() {
+  const res = await fetch(config.url + "/rest/v1/shortcuts?select=id,command_name,shortcut_key,action_text,is_global&order=command_name.asc", {
+    headers: headers(true),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.msg || res.statusText);
+  }
+  return res.json();
 }
 
 async function restoreSession() {
   const o = await chrome.storage.local.get(["supabase_session"]);
-  const session = o.supabase_session;
-  if (!supabase || !session?.access_token) return null;
-  supabase.auth.setSession({
-    access_token: session.access_token,
-    refresh_token: session.refresh_token || "",
-  }).catch(() => {});
-  const { data: { user } } = await supabase.auth.getUser();
+  config.session = o.supabase_session || null;
+  if (!config.session?.access_token || !config.url) return null;
+  const user = await authGetUser();
   return user;
 }
 
@@ -64,16 +114,19 @@ async function login() {
     showMsg("authMsg", "กรุณาใส่ email และ password", true);
     return;
   }
-  if (!supabase) {
+  const cf = getConfigFromForm();
+  if (!cf.url || !cf.anonKey) {
     showMsg("authMsg", "กรุณาบันทึก Config ก่อน", true);
     return;
   }
+  config.url = cf.url;
+  config.anonKey = cf.anonKey;
   showMsg("authMsg", "กำลังเข้าสู่ระบบ...", false);
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    await chrome.storage.local.set({ supabase_session: data.session });
-    chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_session: data.session }).catch(() => {});
+    const data = await authSignIn(email, password);
+    config.session = { access_token: data.access_token, refresh_token: data.refresh_token };
+    await chrome.storage.local.set({ supabase_session: config.session });
+    chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_session: config.session }).catch(() => {});
     showMsg("authMsg", "เข้าสู่ระบบแล้ว", false);
     updateAuthUI(data.user);
     loadShortcuts();
@@ -83,7 +136,8 @@ async function login() {
 }
 
 async function logout() {
-  if (supabase) supabase.auth.signOut().catch(() => {});
+  await authLogout().catch(() => {});
+  config.session = null;
   await chrome.storage.local.set({ supabase_session: null });
   chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_session: null }).catch(() => {});
   showMsg("authMsg", "", false);
@@ -117,23 +171,22 @@ async function loadShortcuts() {
   if (loading) loading.classList.remove("hidden");
   showMsg("shortcutListMsg", "", false);
   try {
-    const { data, error } = await supabase.from("shortcuts").select("id,command_name,shortcut_key,action_text,is_global").order("command_name");
-    if (error) throw error;
+    const data = await fetchShortcuts();
+    const list = Array.isArray(data) ? data : [];
     tbody.innerHTML = "";
-    (data || []).forEach((row) => {
+    list.forEach((row) => {
       const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${escapeHtml(row.command_name || "")}</td>
-            <td>${escapeHtml(row.shortcut_key || "")}</td>
-            <td class="action-preview">${escapeHtml((row.action_text || "").slice(0, 50))}${(row.action_text || "").length > 50 ? "…" : ""}</td>
-            <td>${row.is_global ? "ใช่" : ""}</td>
-            <td>
-              <button type="button" class="btn-ghost btn-edit" data-id="${escapeHtml(row.id)}">แก้ไข</button>
-              <button type="button" class="btn-danger btn-del" data-id="${escapeHtml(row.id)}">ลบ</button>
-            </td>
-          `;
-      tr.querySelector(".btn-edit")?.addEventListener("click", () => startEdit(row));
-      tr.querySelector(".btn-del")?.addEventListener("click", () => deleteShortcut(row.id));
+      tr.innerHTML = `
+        <td>${escapeHtml(row.command_name || "")}</td>
+        <td>${escapeHtml(row.shortcut_key || "")}</td>
+        <td class="action-preview">${escapeHtml((row.action_text || "").slice(0, 50))}${(row.action_text || "").length > 50 ? "…" : ""}</td>
+        <td>${row.is_global ? "ใช่" : ""}</td>
+        <td>
+          <button type="button" class="btn-ghost btn-edit">แก้ไข</button>
+          <button type="button" class="btn-danger btn-del">ลบ</button>
+        </td>`;
+      tr.querySelector(".btn-edit").addEventListener("click", () => startEdit(row));
+      tr.querySelector(".btn-del").addEventListener("click", () => deleteShortcut(row.id));
       tbody.appendChild(tr);
     });
   } catch (e) {
@@ -177,12 +230,10 @@ async function saveShortcut() {
   }
   try {
     if (id) {
-      const { error } = await supabase.from("shortcuts").update({ command_name, shortcut_key, action_text, is_global, updated_at: new Date().toISOString() }).eq("id", id);
-      if (error) throw error;
+      await restShortcuts("PATCH", { command_name, shortcut_key, action_text, is_global, updated_at: new Date().toISOString() }, id);
       showMsg("shortcutListMsg", "อัปเดตแล้ว", false);
     } else {
-      const { error } = await supabase.from("shortcuts").insert({ command_name, shortcut_key, action_text, is_global });
-      if (error) throw error;
+      await restShortcuts("POST", { command_name, shortcut_key, action_text, is_global });
       showMsg("shortcutListMsg", "เพิ่มแล้ว", false);
     }
     cancelEdit();
@@ -196,8 +247,7 @@ async function saveShortcut() {
 async function deleteShortcut(id) {
   if (!confirm("ลบรายการนี้?")) return;
   try {
-    const { error } = await supabase.from("shortcuts").delete().eq("id", id);
-    if (error) throw error;
+    await restShortcuts("DELETE", null, id);
     showMsg("shortcutListMsg", "ลบแล้ว", false);
     await loadShortcuts();
     chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
@@ -208,7 +258,6 @@ async function deleteShortcut(id) {
 
 async function init() {
   await loadStoredConfig();
-  initSupabase();
   const user = await restoreSession();
   updateAuthUI(user);
   if (user) await loadShortcuts();

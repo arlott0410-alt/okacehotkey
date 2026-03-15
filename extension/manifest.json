@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "คีย์ลัด (Text Expansion)",
+  "description": "ส่วนขยายคีย์ลัดบนเว็บไซต์ - sync กับ Supabase",
+  "version": "2.0.0",
+
+  "action": {
+    "default_title": "คีย์ลัดเว็บไซต์",
+    "default_popup": "index.html"
+  },
+
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "webNavigation"
+  ],
+
+  "host_permissions": [
+    "https://*.supabase.co/*",
+    "https://esm.sh/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "type": "module",
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_start"
+    }
+  ],
+
+  "commands": {
+    "paste-1": { "suggested_key": { "default": "Ctrl+Shift+1" }, "description": "Paste shortcut 1" },
+    "paste-2": { "suggested_key": { "default": "Ctrl+Shift+2" }, "description": "Paste shortcut 2" },
+    "paste-3": { "suggested_key": { "default": "Ctrl+Shift+3" }, "description": "Paste shortcut 3" }
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "snippets.js",
+        "handlers.js",
+        "confetti.js",
+        "dom-utils.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
