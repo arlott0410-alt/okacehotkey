@@ -39,7 +39,7 @@ export function invalidateCache() {
 }
 
 export function initStorageWiring() {
-  chrome.runtime.sendMessage({ type: "GET_SHORTCUTS", forceRefresh: false }, (res) => {
+  chrome.runtime.sendMessage({ type: "GET_SHORTCUTS", forceRefresh: true }, (res) => {
     if (chrome.runtime.lastError) return;
     if (res?.ok && Array.isArray(res.data)) {
       cachedSnippets = res.data;

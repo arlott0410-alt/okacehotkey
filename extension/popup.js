@@ -66,7 +66,7 @@
   }
 
   showLoading();
-  chrome.runtime.sendMessage({ type: "GET_SHORTCUTS" }, function (res) {
+  chrome.runtime.sendMessage({ type: "GET_SHORTCUTS", forceRefresh: true }, function (res) {
     if (res && res.ok && Array.isArray(res.data)) {
       renderShortcuts(res.data);
     } else {
