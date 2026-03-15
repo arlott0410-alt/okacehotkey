@@ -2,9 +2,11 @@
 (async () => {
   const { initStorageWiring, loadSnippets } = await import(chrome.runtime.getURL("snippets.js"));
   const { handleKeyDown, handleInput } = await import(chrome.runtime.getURL("handlers.js"));
-  const { getFocusedInput, insertTextAtCursorImmediate } = await import(chrome.runtime.getURL("dom-utils.js"));
+  const { getFocusedInput, insertTextAtCursorImmediate, isEditableElement } = await import(chrome.runtime.getURL("dom-utils.js"));
 
   initStorageWiring();
+
+  let lastFocusedInput = null;
 
   function run() {
     if (window.__okaceHotkeyLoaded) return;
@@ -13,9 +15,17 @@
     document.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("input", handleInput, true);
 
+    document.addEventListener("focusin", (e) => {
+      const el = e.target;
+      if (el && isEditableElement(el)) lastFocusedInput = el;
+    }, true);
+
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg?.type === "INSERT_TEXT" && msg.text != null) {
-        const el = getFocusedInput(null);
+        let el = getFocusedInput(null);
+        if (!el && lastFocusedInput && document.contains(lastFocusedInput) && isEditableElement(lastFocusedInput)) {
+          el = lastFocusedInput;
+        }
         if (el) {
           insertTextAtCursorImmediate(el, String(msg.text));
           sendResponse({ ok: true });

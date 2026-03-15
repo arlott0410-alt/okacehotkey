@@ -5,6 +5,11 @@ export function isSnippetEditorField(el) {
 
 export const INLINE_EDITABLE = new Set(["INPUT", "TEXTAREA"]);
 
+export function isEditableElement(el) {
+  if (!el || !(el instanceof Element)) return false;
+  return INLINE_EDITABLE.has(el.tagName) || !!el.isContentEditable || el.tagName === "TEXTAREA-EX";
+}
+
 export function getFocusedInput(e) {
   const path = (e && e.composedPath) ? e.composedPath() : [];
   for (const el of path) {

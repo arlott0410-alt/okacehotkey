@@ -5,15 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>คีย์ลัด</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 12px 16px; min-width: 200px; background: #1a1b26; color: #c0caf5; }
-    a { color: #7aa2f7; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    p { margin: 0 0 8px; font-size: 13px; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 10px 12px; min-width: 260px; max-height: 400px; background: #1a1b26; color: #c0caf5; overflow-y: auto; }
+    h2 { font-size: 13px; margin: 0 0 8px; color: #7aa2f7; font-weight: 600; }
+    .shortcut-item { display: block; width: 100%; padding: 8px 10px; margin-bottom: 4px; border: none; border-radius: 6px; background: #24283b; color: #c0caf5; text-align: left; cursor: pointer; font-size: 13px; }
+    .shortcut-item:hover { background: #414868; }
+    .shortcut-item .label { font-weight: 500; }
+    .shortcut-item .preview { font-size: 11px; color: #565f89; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #shortcutList { margin-bottom: 10px; }
+    #shortcutList:empty + .empty-msg { display: block; }
+    .empty-msg { display: none; font-size: 12px; color: #565f89; margin-bottom: 10px; }
+    .loading { font-size: 12px; color: #565f89; padding: 8px 0; }
+    .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #24283b; }
+    .footer a { color: #7aa2f7; text-decoration: none; font-size: 12px; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <p><strong>คีย์ลัด (Text Expansion)</strong></p>
-  <p><a href="#" id="openOptions">เปิดตั้งค่า (Options)</a></p>
+  <h2>กดเพื่อใส่ข้อความ</h2>
+  <div id="shortcutList"></div>
+  <p class="empty-msg">ยังไม่มีคำลัด ไปตั้งค่าใน Options แล้วเพิ่มคำลัด</p>
+  <div class="footer">
+    <a href="#" id="openOptions">เปิดตั้งค่า (Options)</a>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

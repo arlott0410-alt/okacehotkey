@@ -9,31 +9,20 @@ const showMsg = (elId, text, isError) => {
 
 let config = { url: "", anonKey: "", session: null };
 
-function getConfigFromForm() {
-  return {
-    url: ($("supabaseUrl")?.value || "").trim().replace(/\/$/, ""),
-    anonKey: ($("supabaseAnonKey")?.value || "").trim(),
-  };
-}
-
 async function loadStoredConfig() {
   const o = await chrome.storage.local.get(["supabase_url", "supabase_anon_key", "supabase_session"]);
-  if ($("supabaseUrl")) $("supabaseUrl").value = o.supabase_url || "";
-  if ($("supabaseAnonKey")) $("supabaseAnonKey").value = o.supabase_anon_key || "";
-  config = { url: o.supabase_url || "", anonKey: o.supabase_anon_key || "", session: o.supabase_session || null };
-}
-
-async function saveConfig() {
-  const { url, anonKey } = getConfigFromForm();
-  if (!url || !anonKey) {
-    showMsg("configMsg", "กรุณาใส่ URL และ Anon Key", true);
-    return;
+  config = {
+    url: (o.supabase_url || "").replace(/\/$/, ""),
+    anonKey: o.supabase_anon_key || "",
+    session: o.supabase_session || null,
+  };
+  if (!config.url || !config.anonKey) {
+    const res = await new Promise((r) => chrome.runtime.sendMessage({ type: "GET_CONFIG" }, r));
+    if (res?.ok && res.data) {
+      config.url = res.data.url || "";
+      config.anonKey = res.data.anonKey || "";
+    }
   }
-  await chrome.storage.local.set({ supabase_url: url, supabase_anon_key: anonKey });
-  chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_url: url, supabase_anon_key: anonKey }).catch(() => {});
-  showMsg("configMsg", "บันทึกแล้ว", false);
-  config.url = url;
-  config.anonKey = anonKey;
 }
 
 // ---- Supabase REST (fetch only) ----
@@ -114,13 +103,10 @@ async function login() {
     showMsg("authMsg", "กรุณาใส่ email และ password", true);
     return;
   }
-  const cf = getConfigFromForm();
-  if (!cf.url || !cf.anonKey) {
-    showMsg("authMsg", "กรุณาบันทึก Config ก่อน", true);
+  if (!config.url || !config.anonKey) {
+    showMsg("authMsg", "ไม่พบการตั้งค่า Supabase", true);
     return;
   }
-  config.url = cf.url;
-  config.anonKey = cf.anonKey;
   showMsg("authMsg", "กำลังเข้าสู่ระบบ...", false);
   try {
     const data = await authSignIn(email, password);
@@ -262,7 +248,6 @@ async function init() {
   updateAuthUI(user);
   if (user) await loadShortcuts();
 
-  $("saveConfig")?.addEventListener("click", saveConfig);
   $("btnLogin")?.addEventListener("click", login);
   $("btnLogout")?.addEventListener("click", logout);
   $("btnSaveShortcut")?.addEventListener("click", saveShortcut);

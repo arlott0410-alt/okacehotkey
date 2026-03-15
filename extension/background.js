@@ -2,7 +2,10 @@
 const CACHE_KEY_SHORTCUTS = "shortcuts_cache";
 const CACHE_KEY_TS = "shortcuts_cache_ts";
 const CACHE_DURATION_MS = 1000 * 60 * 5; // 5 นาที
-const CONFIG_KEYS = ["supabase_url", "supabase_anon_key", "supabase_session"];
+
+// ค่าคงที่ Supabase – แก้ตรงนี้แล้วติดตั้ง extension ใช้ได้เลย (ไม่ต้องตั้งค่าใน UI)
+const DEFAULT_SUPABASE_URL = "https://hppiggscegpmderckcnm.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = ""; // ใส่ anon key จริงของโปรเจกต์ Supabase
 
 let inMemoryShortcuts = null;
 let lastFetchTs = 0;
@@ -10,8 +13,13 @@ let lastFetchTs = 0;
 // ===================== Config =====================
 async function getConfig() {
   const o = await chrome.storage.local.get(["supabase_url", "supabase_anon_key", "supabase_session"]);
-  const url = (o.supabase_url || "").replace(/\/$/, "");
-  const anonKey = o.supabase_anon_key || "";
+  let url = (o.supabase_url || "").replace(/\/$/, "");
+  let anonKey = o.supabase_anon_key || "";
+  if (!url || !anonKey) {
+    url = (DEFAULT_SUPABASE_URL || "").replace(/\/$/, "");
+    anonKey = DEFAULT_SUPABASE_ANON_KEY || "";
+    if (url && anonKey) await chrome.storage.local.set({ supabase_url: url, supabase_anon_key: anonKey });
+  }
   const session = o.supabase_session || null;
   return { url, anonKey, session };
 }
