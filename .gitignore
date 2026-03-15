@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Local / env
+.env
+.env.local
+*.local
+
+# Store (optional: uncomment if you don't want to commit local data)
+# api/store.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
