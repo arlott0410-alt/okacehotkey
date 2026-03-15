@@ -5,78 +5,136 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ตั้งค่าคีย์ลัด - Text Expansion</title>
   <style>
-    :root { --bg: #1a1b26; --card: #24283b; --text: #c0caf5; --muted: #565f89; --accent: #7aa2f7; --danger: #f7768e; --ok: #9ece6a; --input: #414868; }
+    :root {
+      --bg: #0f111a;
+      --bg-card: #161b28;
+      --bg-sidebar: #131822;
+      --border: #1e2433;
+      --text: #e6edf3;
+      --text-muted: #7d8590;
+      --accent: #58a6ff;
+      --accent-hover: #79b8ff;
+      --danger: #f85149;
+      --success: #3fb950;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,.25);
+    }
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1rem; min-height: 100vh; }
-    .wrap { max-width: 800px; margin: 0 auto; }
-    h1 { font-size: 1.35rem; margin: 0 0 1rem; color: var(--accent); }
-    .card { background: var(--card); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
-    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
-    input, select, textarea, button { font-size: 1rem; }
-    input, select, textarea { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid var(--input); border-radius: 6px; background: var(--bg); color: var(--text); }
-    textarea { min-height: 80px; resize: vertical; }
-    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; margin-right: 0.5rem; margin-top: 0.25rem; }
-    .btn-primary { background: var(--accent); color: var(--bg); }
-    .btn-danger { background: var(--danger); color: #fff; }
-    .btn-ghost { background: var(--input); color: var(--text); }
-    .msg { padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem; font-size: 0.9rem; }
-    .msg.err { background: rgba(247,118,142,0.2); color: var(--danger); }
-    .msg.ok { background: rgba(158,206,106,0.2); color: var(--ok); }
-    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
-    .row > * { flex: 1 1 auto; min-width: 0; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 0.5rem 0.6rem; text-align: left; border-bottom: 1px solid var(--input); }
-    th { font-size: 0.8rem; color: var(--muted); }
-    .loading { color: var(--muted); }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; font-size: 14px; }
+    .app { display: flex; flex-direction: column; min-height: 100vh; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .topbar h1 { font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--text); }
+    .auth-wrap { display: flex; align-items: center; gap: 10px; }
+    .auth-wrap .user-email { font-size: 0.85rem; color: var(--text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+    .body-wrap { display: flex; flex: 1; min-height: 0; }
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--bg-sidebar); border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; }
+    .sidebar-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px; }
+    .folder-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: var(--radius); margin-bottom: 4px; }
+    .folder-item:hover { background: rgba(255,255,255,.05); }
+    .folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .folder-item.no-folder { color: var(--text-muted); font-style: italic; }
+    .switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; background: var(--border); border-radius: 10px; cursor: pointer; transition: background .2s; }
+    .switch.on { background: var(--accent); }
+    .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: transform .2s; }
+    .switch.on::after { transform: translateX(16px); }
+    .btn-add-folder { width: 100%; margin-top: 8px; padding: 8px; font-size: 0.85rem; border: 1px dashed var(--border); border-radius: var(--radius); background: transparent; color: var(--text-muted); cursor: pointer; }
+    .btn-add-folder:hover { border-color: var(--accent); color: var(--accent); }
+    .main { flex: 1; padding: 20px; overflow-y: auto; }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; box-shadow: var(--shadow); }
+    .card h2 { font-size: 1rem; font-weight: 600; margin: 0 0 12px; color: var(--text); }
+    .card .hint { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px; }
+    label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { min-height: 88px; resize: vertical; }
+    .form-row { margin-bottom: 12px; }
+    .form-row:last-of-type { margin-bottom: 0; }
+    .row-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    button { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-ghost { background: var(--border); color: var(--text); }
+    .btn-ghost:hover { background: #2a3142; }
+    .btn-danger { background: rgba(248,81,73,.2); color: var(--danger); }
+    .btn-danger:hover { background: rgba(248,81,73,.3); }
+    .msg { padding: 8px 12px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
+    .msg.err { background: rgba(248,81,73,.15); color: var(--danger); }
+    .msg.ok { background: rgba(63,185,80,.15); color: var(--success); }
     .hidden { display: none !important; }
-    #authSection, #shortcutsSection { margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+    td.action-preview { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .loading { color: var(--text-muted); }
+    #shortcutForm .form-row:not(:first-child) { margin-top: 12px; }
+    .checkbox-wrap { display: flex; align-items: center; gap: 8px; }
+    .checkbox-wrap input { width: auto; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>ตั้งค่าคีย์ลัด (Text Expansion)</h1>
-
-    <div class="card">
-      <h2 style="font-size:1rem; margin:0 0 0.5rem;">เข้าสู่ระบบ</h2>
-      <div id="authSection">
+  <div class="app">
+    <header class="topbar">
+      <h1>ตั้งค่าคีย์ลัด (Text Expansion)</h1>
+      <div class="auth-wrap">
         <div id="loginForm">
-          <label>Email</label>
-          <input type="email" id="loginEmail" placeholder="you@company.com" />
-          <label style="margin-top:0.5rem;">Password</label>
-          <input type="password" id="loginPassword" placeholder="••••••••" />
+          <input type="email" id="loginEmail" placeholder="Email" style="width:140px; margin-right:6px;" />
+          <input type="password" id="loginPassword" placeholder="รหัสผ่าน" style="width:100px; margin-right:6px;" />
           <button type="button" class="btn-primary" id="btnLogin">เข้าสู่ระบบ</button>
         </div>
         <div id="loggedIn" class="hidden">
-          <span id="userEmail" class="muted"></span>
+          <span id="userEmail" class="user-email"></span>
           <button type="button" class="btn-ghost" id="btnLogout">ออกจากระบบ</button>
         </div>
       </div>
-      <div id="authMsg"></div>
-    </div>
+    </header>
+    <div id="authMsg" class="msg hidden" style="margin:0 20px 10px;"></div>
 
-    <div class="card" id="shortcutsSection">
-      <h2 style="font-size:1rem; margin:0 0 0.5rem;">จัดการ Shortcuts</h2>
-      <p class="muted" style="font-size:0.9rem;">ต้องเข้าสู่ระบบก่อนจึงจะเพิ่ม/แก้/ลบได้</p>
-      <div id="shortcutForm" class="hidden">
-        <input type="hidden" id="editId" />
-        <label>Command name (ภาษาอังกฤษ)</label>
-        <input type="text" id="commandName" placeholder="เช่น greeting" />
-        <label style="margin-top:0.5rem;">Shortcut key (คำลัดหรือคีย์ลัด)</label>
-        <input type="text" id="shortcutKey" placeholder="เช่น สวัสดี หรือ ctrl+shift+1" />
-        <label style="margin-top:0.5rem;">Action text (ข้อความที่จะแทนที่)</label>
-        <textarea id="actionText" placeholder="ข้อความที่ต้องการให้ paste"></textarea>
-        <label style="margin-top:0.5rem;"><input type="checkbox" id="isGlobal" /> ใช้ได้ทุกหน้า (global)</label>
-        <div class="row" style="margin-top:0.5rem;">
-          <button type="button" class="btn-primary" id="btnSaveShortcut">บันทึก</button>
-          <button type="button" class="btn-ghost" id="btnCancelEdit">ยกเลิก</button>
+    <div class="body-wrap">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-title">โฟลเดอร์ (เปิด/ปิดการใช้งาน)</div>
+        <div id="folderList"></div>
+        <button type="button" class="btn-add-folder hidden" id="btnAddFolder">+ เพิ่มโฟลเดอร์</button>
+      </aside>
+      <main class="main">
+        <div class="card" id="shortcutsSection">
+          <h2>จัดการ Shortcuts</h2>
+          <p class="hint">ต้องเข้าสู่ระบบก่อนจึงจะเพิ่ม/แก้/ลบได้</p>
+          <div id="shortcutForm" class="hidden">
+            <input type="hidden" id="editId" />
+            <div class="form-row">
+              <label>โฟลเดอร์</label>
+              <select id="folderId"><option value="">— ไม่มีโฟลเดอร์ —</option></select>
+            </div>
+            <div class="form-row">
+              <label>Command name (ภาษาอังกฤษ)</label>
+              <input type="text" id="commandName" placeholder="เช่น greeting" />
+            </div>
+            <div class="form-row">
+              <label>Shortcut key (คำลัดหรือคีย์ลัด)</label>
+              <input type="text" id="shortcutKey" placeholder="เช่น สวัสดี หรือ ctrl+shift+1" />
+            </div>
+            <div class="form-row">
+              <label>Action text (ข้อความที่จะแทนที่)</label>
+              <textarea id="actionText" placeholder="ข้อความที่ต้องการให้ paste"></textarea>
+            </div>
+            <div class="form-row checkbox-wrap">
+              <input type="checkbox" id="isGlobal" />
+              <label style="margin:0;">ใช้ได้ทุกหน้า (global)</label>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn-primary" id="btnSaveShortcut">บันทึก</button>
+              <button type="button" class="btn-ghost" id="btnCancelEdit">ยกเลิก</button>
+            </div>
+          </div>
+          <div id="shortcutListMsg" class="msg hidden"></div>
+          <div id="shortcutListLoading" class="loading hidden">กำลังโหลด...</div>
+          <table id="shortcutTable" style="margin-top:16px;">
+            <thead><tr><th>โฟลเดอร์</th><th>Command</th><th>Shortcut key</th><th>Action text</th><th>Global</th><th></th></tr></thead>
+            <tbody id="shortcutTableBody"></tbody>
+          </table>
         </div>
-      </div>
-      <div id="shortcutListMsg"></div>
-      <div id="shortcutListLoading" class="loading hidden">กำลังโหลด...</div>
-      <table id="shortcutTable" style="margin-top:1rem;">
-        <thead><tr><th>Command</th><th>Shortcut key</th><th>Action text</th><th>Global</th><th></th></tr></thead>
-        <tbody id="shortcutTableBody"></tbody>
-      </table>
+      </main>
     </div>
   </div>
   <script type="module" src="options.js"></script>

@@ -1,13 +1,16 @@
 // ===================== background.js (Supabase) =====================
 const CACHE_KEY_SHORTCUTS = "shortcuts_cache";
+const CACHE_KEY_FOLDERS = "folders_cache";
 const CACHE_KEY_TS = "shortcuts_cache_ts";
+const STORAGE_KEY_ENABLED_FOLDERS = "enabled_folder_ids";
 const CACHE_DURATION_MS = 1000 * 60 * 5; // 5 นาที
 
 // ค่าคงที่ Supabase – แก้ตรงนี้แล้วติดตั้ง extension ใช้ได้เลย (ไม่ต้องตั้งค่าใน UI)
-const DEFAULT_SUPABASE_URL = "https://hppiggscegpmderckcnm.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = ""; // ใส่ anon key จริงของโปรเจกต์ Supabase
+const DEFAULT_SUPABASE_URL = "https://hpplggscegpmderckcnm.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwcGxnZ3NjZWdwbWRlcmNrY25tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTgzNTUsImV4cCI6MjA4OTEzNDM1NX0.YLIQvmzvsAXo3plgPXcvTA6DoebqFxCWmFjRCdMg_zU"; // ใส่ anon key จริงของโปรเจกต์ Supabase
 
 let inMemoryShortcuts = null;
+let inMemoryFolders = null;
 let lastFetchTs = 0;
 
 // ===================== Config =====================
@@ -51,6 +54,30 @@ async function supabaseFetch(url, anonKey, session, path, opts = {}) {
   return res.json();
 }
 
+// ===================== Load folders from Supabase =====================
+async function loadFoldersFromSupabase(forceRefresh = false) {
+  const { url, anonKey, session } = await getConfig();
+  if (!url || !anonKey) return [];
+
+  const now = Date.now();
+  if (!forceRefresh && inMemoryFolders && now - lastFetchTs < CACHE_DURATION_MS) {
+    return inMemoryFolders;
+  }
+
+  try {
+    const rows = await supabaseFetch(url, anonKey, session, "/folders?select=id,name,sort_order&order=sort_order.asc,name.asc", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const list = Array.isArray(rows) ? rows : [];
+    inMemoryFolders = list;
+    return list;
+  } catch (e) {
+    console.warn("[BG] loadFoldersFromSupabase error:", e.message);
+    return inMemoryFolders || [];
+  }
+}
+
 // ===================== Load shortcuts from Supabase =====================
 async function loadShortcutsFromSupabase(forceRefresh = false) {
   const { url, anonKey, session } = await getConfig();
@@ -65,7 +92,7 @@ async function loadShortcutsFromSupabase(forceRefresh = false) {
   }
 
   try {
-    const rows = await supabaseFetch(url, anonKey, session, "/shortcuts?select=id,command_name,shortcut_key,action_text,is_global", {
+    const rows = await supabaseFetch(url, anonKey, session, "/shortcuts?select=id,command_name,shortcut_key,action_text,is_global,folder_id", {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -89,9 +116,17 @@ async function loadShortcutsFromSupabase(forceRefresh = false) {
   }
 }
 
-// ===================== Get shortcuts (cache-first) =====================
+// ===================== Get shortcuts (cache-first, filter by enabled folders) =====================
 async function getShortcuts(forceRefresh = false) {
-  const list = await loadShortcutsFromSupabase(forceRefresh);
+  const raw = await loadShortcutsFromSupabase(forceRefresh);
+  const { [STORAGE_KEY_ENABLED_FOLDERS]: enabledIds } = await chrome.storage.local.get(STORAGE_KEY_ENABLED_FOLDERS);
+  // null/undefined = ใช้ทุกโฟลเดอร์; array = ใช้เฉพาะโฟลเดอร์ที่เปิด + คีย์ลัดที่ไม่มีโฟลเดอร์ (folder_id null)
+  const enabledSet = Array.isArray(enabledIds) ? new Set(enabledIds) : null;
+  const list = raw.filter((s) => {
+    if (s.folder_id == null) return true; // ไม่มีโฟลเดอร์ = ใช้เสมอ
+    if (enabledSet === null) return true; // ไม่ได้ตั้งค่า = ใช้ทั้งหมด
+    return enabledSet.has(s.folder_id);
+  });
   return list.map((s) => ({
     id: s.id,
     command_name: s.command_name,
@@ -100,21 +135,24 @@ async function getShortcuts(forceRefresh = false) {
     content: s.action_text || "",
     action_text: s.action_text,
     is_global: !!s.is_global,
+    folder_id: s.folder_id || null,
   }));
 }
 
 // ===================== Hydrate from storage on startup =====================
 async function hydrateFromStorage() {
-  const o = await chrome.storage.local.get([CACHE_KEY_SHORTCUTS, CACHE_KEY_TS]);
+  const o = await chrome.storage.local.get([CACHE_KEY_SHORTCUTS, CACHE_KEY_TS, CACHE_KEY_FOLDERS]);
   if (Array.isArray(o[CACHE_KEY_SHORTCUTS])) {
     inMemoryShortcuts = o[CACHE_KEY_SHORTCUTS];
     lastFetchTs = o[CACHE_KEY_TS] || 0;
   }
+  if (Array.isArray(o[CACHE_KEY_FOLDERS])) inMemoryFolders = o[CACHE_KEY_FOLDERS];
 }
 
 // ===================== Broadcast shortcuts updated =====================
 async function broadcastShortcutsUpdated() {
   inMemoryShortcuts = null;
+  inMemoryFolders = null;
   lastFetchTs = 0;
   const tabs = await chrome.tabs.query({}).catch(() => []);
   for (const tab of tabs) {
@@ -188,8 +226,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         case "REFRESH_SHORTCUTS": {
           await loadShortcutsFromSupabase(true);
+          await loadFoldersFromSupabase(true);
           await broadcastShortcutsUpdated();
           sendResponse({ ok: true });
+          break;
+        }
+        case "GET_FOLDERS": {
+          const list = await loadFoldersFromSupabase(!!msg.forceRefresh);
+          sendResponse({ ok: true, data: list });
+          break;
+        }
+        case "SET_ENABLED_FOLDERS": {
+          if (msg.ids == null) {
+            await chrome.storage.local.remove(STORAGE_KEY_ENABLED_FOLDERS);
+          } else if (Array.isArray(msg.ids)) {
+            await chrome.storage.local.set({ [STORAGE_KEY_ENABLED_FOLDERS]: msg.ids });
+          }
+          inMemoryShortcuts = null;
+          await broadcastShortcutsUpdated();
+          sendResponse({ ok: true });
+          break;
+        }
+        case "GET_ENABLED_FOLDERS": {
+          const o = await chrome.storage.local.get(STORAGE_KEY_ENABLED_FOLDERS);
+          const ids = Array.isArray(o[STORAGE_KEY_ENABLED_FOLDERS]) ? o[STORAGE_KEY_ENABLED_FOLDERS] : null;
+          sendResponse({ ok: true, data: ids });
           break;
         }
         case "SAVE_CONFIG": {
