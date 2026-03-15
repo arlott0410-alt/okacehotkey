@@ -1,0 +1,19 @@
+{
+  "name": "okacehotkey-api",
+  "version": "1.0.0",
+  "description": "API สำหรับ Extension คีย์ลัด (site-map + snippets)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "keywords": ["api", "snippets", "chrome-extension"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

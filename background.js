@@ -1,5 +1,5 @@
 // ===================== background.js =====================
-const BASE = "https://key-short.nm9123454158.com/api";
+const BASE = "http://localhost:3000/api";
 const RETRIES = 2;
 const CACHE_DURATION = 1000 * 60 * 60 * 12; // 12 ชั่วโมง
 

@@ -34,7 +34,7 @@
   ],
 
   "host_permissions": [
-    "https://api-key-lat.thaideal.co/*"
+    "http://localhost:3000/*"
   ],
 
   "content_scripts": [

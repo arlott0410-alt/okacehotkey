@@ -1,0 +1,12 @@
+name = "okacehotkey-api"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# สร้าง KV namespace ใน Dashboard หรือใช้คำสั่ง: wrangler kv:namespace create "STORE"
+# แล้วใส่ id ด้านล่าง
+[[kv_namespaces]]
+binding = "STORE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# ถ้า deploy แล้วจะได้ URL แบบ https://okacehotkey-api.<your-subdomain>.workers.dev
+# ใช้เป็น BASE ใน extension: https://okacehotkey-api.<subdomain>.workers.dev/api

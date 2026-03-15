@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>จัดการคีย์ลัด</title>
+  <style>
+    :root { --bg: #1a1b26; --card: #24283b; --text: #c0caf5; --muted: #565f89; --accent: #7aa2f7; --danger: #f7768e; --input: #414868; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1rem; min-height: 100vh; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin: 0 0 1rem; color: var(--accent); }
+    .card { background: var(--card); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.25rem; }
+    input, select, textarea { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid var(--input); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 1rem; }
+    textarea { min-height: 80px; resize: vertical; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.9rem; cursor: pointer; }
+    .btn-primary { background: var(--accent); color: var(--bg); }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; color: var(--muted); }
+    .btn-danger { background: var(--danger); color: #fff; padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+    .row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; }
+    .row > * { flex: 1 1 auto; min-width: 0; }
+    .row .grow { flex: 2 1 200px; }
+    .api-bar { font-size: 0.8rem; color: var(--muted); margin-bottom: 1rem; }
+    .api-bar input { max-width: 320px; display: inline-block; margin-right: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.5rem 0.6rem; text-align: left; border-bottom: 1px solid var(--input); }
+    th { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+    .snippet-content { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .msg { padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem; font-size: 0.9rem; }
+    .msg.ok { background: rgba(0,200,100,0.2); color: #9ece6a; }
+    .msg.err { background: rgba(247,118,142,0.2); color: var(--danger); }
+    .sites-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .sites-row select { max-width: 200px; }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>จัดการคีย์ลัด</h1>
+    <div class="api-bar card">
+      <label>ที่อยู่ API (ถ้าเปิดหน้านี้จากที่อื่น ให้ใส่ URL ของ API)</label>
+      <input type="text" id="apiBase" placeholder="เช่น http://localhost:3000/api หรือ https://xxx.workers.dev/api" />
+      <button type="button" class="btn-primary" id="saveApi">บันทึกแล้วโหลดใหม่</button>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1.1rem; margin:0 0 0.75rem;">ไซต์</h2>
+      <div class="sites-row">
+        <select id="siteSelect">
+          <option value="">-- เลือกไซต์ --</option>
+        </select>
+        <button type="button" class="btn-ghost" id="btnRefreshSites">โหลดไซต์ใหม่</button>
+      </div>
+      <div class="row">
+        <div><label>รหัสไซต์ (ภาษาอังกฤษ)</label><input type="text" id="newSiteId" placeholder="เช่น my-site" /></div>
+        <div><label>ชื่อแสดง</label><input type="text" id="newSiteName" placeholder="เช่น ไซต์ของฉัน" /></div>
+        <div><label>&nbsp;</label><button type="button" class="btn-primary" id="btnAddSite">เพิ่มไซต์</button></div>
+      </div>
+      <div id="siteMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1.1rem; margin:0 0 0.75rem;">คีย์ลัดของไซต์นี้</h2>
+      <div class="row">
+        <div class="grow"><label>คำลัด / คีย์ลัด (เช่น สวัสดี หรือ ctrl+shift+1)</label><input type="text" id="shortcut" placeholder="คำลัดหรือคีย์ลัด" /></div>
+        <div class="grow" style="flex:3 1 260px;"><label>ข้อความที่จะแทนที่</label><input type="text" id="content" placeholder="ข้อความที่ต้องการให้แทนที่เมื่อกดคำลัด" /></div>
+        <div><label>&nbsp;</label><button type="button" class="btn-primary" id="btnAddSnippet">เพิ่มคีย์ลัด</button></div>
+      </div>
+      <div id="snippetMsg"></div>
+      <table style="margin-top:1rem;">
+        <thead><tr><th>คำลัด</th><th>ข้อความ</th><th></th></tr></thead>
+        <tbody id="snippetList"></tbody>
+      </table>
+      <div id="snippetEmpty" class="empty" style="display:none;">ยังไม่มีคีย์ลัดในไซต์นี้ เลือกไซต์แล้วกดเพิ่มคีย์ลัดด้านบน</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'okacehotkey_api_base';
+      let API_BASE = localStorage.getItem(STORAGE_KEY) || (location.origin && !location.href.startsWith('file:') ? location.origin + '/api' : 'http://localhost:3000/api');
+
+      const $ = (id) => document.getElementById(id);
+      const apiBaseEl = $('apiBase');
+      const siteSelect = $('siteSelect');
+      const snippetList = $('snippetList');
+      const snippetEmpty = $('snippetEmpty');
+
+      function showMsg(containerId, text, isError) {
+        const el = $(containerId);
+        el.innerHTML = text ? '<div class="msg ' + (isError ? 'err' : 'ok') + '">' + text + '</div>' : '';
+      }
+
+      function setApiBase() {
+        const v = apiBaseEl.value.trim();
+        if (v) { API_BASE = v.replace(/\/$/, ''); localStorage.setItem(STORAGE_KEY, API_BASE); }
+        apiBaseEl.value = API_BASE;
+      }
+      apiBaseEl.value = API_BASE;
+      $('saveApi').onclick = () => { setApiBase(); loadSites(); loadSnippets(); };
+
+      async function api(path, opts = {}) {
+        const url = API_BASE.replace(/\/$/, '') + path;
+        const res = await fetch(url, { headers: { 'Content-Type': 'application/json', ...opts.headers }, ...opts });
+        if (res.status === 204) return null;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        return data;
+      }
+
+      async function loadSites() {
+        try {
+          const data = await api('/site-map');
+          const sites = data.data || {};
+          const ids = Object.keys(sites);
+          siteSelect.innerHTML = '<option value="">-- เลือกไซต์ --</option>' + ids.map(id => '<option value="' + id + '">' + (sites[id] || id) + '</option>').join('');
+          const current = siteSelect.value;
+          if (current && ids.includes(current)) { /* keep */ } else if (ids.length) siteSelect.value = ids[0];
+          loadSnippets();
+        } catch (e) {
+          showMsg('siteMsg', 'โหลดไซต์ไม่สำเร็จ: ' + e.message, true);
+        }
+      }
+
+      $('btnRefreshSites').onclick = loadSites;
+
+      $('btnAddSite').onclick = async () => {
+        const id = $('newSiteId').value.trim();
+        const name = $('newSiteName').value.trim();
+        if (!id) { showMsg('siteMsg', 'กรุณาใส่รหัสไซต์', true); return; }
+        try {
+          await api('/sites', { method: 'POST', body: JSON.stringify({ id, name: name || id }) });
+          showMsg('siteMsg', 'เพิ่มไซต์แล้ว');
+          $('newSiteId').value = ''; $('newSiteName').value = '';
+          loadSites();
+        } catch (e) {
+          showMsg('siteMsg', e.message, true);
+        }
+      };
+
+      async function loadSnippets() {
+        const site = siteSelect.value;
+        snippetList.innerHTML = '';
+        snippetEmpty.style.display = 'none';
+        if (!site) { snippetEmpty.style.display = 'block'; snippetEmpty.textContent = 'เลือกไซต์ก่อน'; return; }
+        try {
+          const data = await api('/extension?site=' + encodeURIComponent(site));
+          const list = data.snippets || [];
+          if (list.length === 0) { snippetEmpty.style.display = 'block'; snippetEmpty.textContent = 'ยังไม่มีคีย์ลัดในไซต์นี้'; return; }
+          list.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + escapeHtml(s.shortcut || '') + '</td><td class="snippet-content" title="' + escapeHtml(s.content || '') + '">' + escapeHtml(s.content || '') + '</td><td><button type="button" class="btn-danger btn-del" data-id="' + escapeHtml(s._id) + '">ลบ</button></td>';
+            tr.querySelector('.btn-del').onclick = () => deleteSnippet(s._id);
+            snippetList.appendChild(tr);
+          });
+        } catch (e) {
+          showMsg('snippetMsg', 'โหลดคีย์ลัดไม่สำเร็จ: ' + e.message, true);
+        }
+      }
+
+      function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+      }
+
+      siteSelect.onchange = loadSnippets;
+
+      $('btnAddSnippet').onclick = async () => {
+        const site = siteSelect.value;
+        if (!site) { showMsg('snippetMsg', 'เลือกไซต์ก่อน', true); return; }
+        const shortcut = $('shortcut').value.trim();
+        const content = $('content').value;
+        if (!shortcut) { showMsg('snippetMsg', 'กรุณาใส่คำลัด/คีย์ลัด', true); return; }
+        try {
+          await api('/extension', { method: 'POST', body: JSON.stringify({ site, shortcut, content }) });
+          showMsg('snippetMsg', 'เพิ่มคีย์ลัดแล้ว');
+          $('shortcut').value = ''; $('content').value = '';
+          loadSnippets();
+        } catch (e) {
+          showMsg('snippetMsg', e.message, true);
+        }
+      };
+
+      async function deleteSnippet(id) {
+        if (!confirm('ลบคีย์ลัดนี้?')) return;
+        try {
+          await api('/extension/' + encodeURIComponent(id), { method: 'DELETE' });
+          loadSnippets();
+        } catch (e) {
+          showMsg('snippetMsg', e.message, true);
+        }
+      }
+
+      loadSites();
+    })();
+  </script>
+</body>
+</html>

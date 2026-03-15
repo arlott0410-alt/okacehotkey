@@ -1,0 +1,19 @@
+{
+  "sites": {
+    "default": "ไซต์หลัก"
+  },
+  "snippets": [
+    {
+      "_id": "demo1",
+      "site": "default",
+      "shortcut": "สวัสดี",
+      "content": "สวัสดีครับ ยินดีต้อนรับ"
+    },
+    {
+      "_id": "demo2",
+      "site": "default",
+      "shortcut": "ctrl+shift+1",
+      "content": "ข้อความจากคีย์ลัด Ctrl+Shift+1"
+    }
+  ]
+}
