@@ -120,14 +120,19 @@ async function loadShortcutsFromSupabase(forceRefresh = false) {
 async function getShortcuts(forceRefresh = false) {
   const raw = await loadShortcutsFromSupabase(forceRefresh);
   const { [STORAGE_KEY_ENABLED_FOLDERS]: enabledIds } = await chrome.storage.local.get(STORAGE_KEY_ENABLED_FOLDERS);
-  // null/undefined = ใช้ทุกโฟลเดอร์; array = ใช้เฉพาะโฟลเดอร์ที่เปิด + คีย์ลัดที่ไม่มีโฟลเดอร์ (folder_id null)
   const enabledSet = Array.isArray(enabledIds) ? new Set(enabledIds) : null;
-  const list = raw.filter((s) => {
-    if (s.folder_id == null) return true; // ไม่มีโฟลเดอร์ = ใช้เสมอ
-    if (enabledSet === null) return true; // ไม่ได้ตั้งค่า = ใช้ทั้งหมด
+  const filtered = raw.filter((s) => {
+    if (s.folder_id == null) return true;
+    if (enabledSet === null) return true;
     return enabledSet.has(s.folder_id);
   });
-  return list.map((s) => ({
+  filtered.sort((a, b) => {
+    const oa = a.sort_order ?? 0;
+    const ob = b.sort_order ?? 0;
+    if (oa !== ob) return oa - ob;
+    return (a.command_name || "").localeCompare(b.command_name || "");
+  });
+  return filtered.map((s) => ({
     id: s.id,
     command_name: s.command_name,
     shortcut: s.shortcut_key || "",
