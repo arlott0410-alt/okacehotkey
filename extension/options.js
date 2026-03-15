@@ -1,4 +1,4 @@
-// options.js – Supabase Auth + Folders + CRUD shortcuts
+// options.js – Text Blaze-style UI: sidebar (folders + snippets) + editor panel
 const $ = (id) => document.getElementById(id);
 const showMsg = (elId, text, isError) => {
   const el = $(elId);
@@ -9,7 +9,10 @@ const showMsg = (elId, text, isError) => {
 
 let config = { url: "", anonKey: "", session: null };
 let folders = [];
+let shortcuts = [];
 let enabledFolderIds = null;
+let editingId = null; // null | 'new' | uuid
+let collapsedFolderIds = new Set();
 
 async function loadStoredConfig() {
   const o = await chrome.storage.local.get(["supabase_url", "supabase_anon_key", "supabase_session"]);
@@ -63,7 +66,6 @@ async function authLogout() {
   }).catch(() => {});
 }
 
-// ---- Folders ----
 async function fetchFolders() {
   const res = await fetch(config.url + "/rest/v1/folders?select=id,name,sort_order&order=sort_order.asc,name.asc", {
     headers: headers(true),
@@ -91,7 +93,6 @@ async function restFolders(method, body = null, id = null) {
   return res.json();
 }
 
-// ---- Shortcuts ----
 async function restShortcuts(method, body = null, id = null) {
   const url = id
     ? config.url + "/rest/v1/shortcuts?id=eq." + encodeURIComponent(id)
@@ -108,7 +109,7 @@ async function restShortcuts(method, body = null, id = null) {
 }
 
 async function fetchShortcuts() {
-  const res = await fetch(config.url + "/rest/v1/shortcuts?select=id,command_name,shortcut_key,action_text,is_global,folder_id&order=command_name.asc", {
+  const res = await fetch(config.url + "/rest/v1/shortcuts?select=id,command_name,shortcut_key,action_text,is_global,folder_id,sort_order&order=sort_order.asc,command_name.asc", {
     headers: headers(true),
   });
   if (!res.ok) {
@@ -159,29 +160,30 @@ async function logout() {
   chrome.runtime.sendMessage({ type: "SAVE_CONFIG", supabase_session: null }).catch(() => {});
   showMsg("authMsg", "", false);
   updateAuthUI(null);
-  $("shortcutForm").classList.add("hidden");
-  $("shortcutTableBody").innerHTML = "";
-  $("folderList").innerHTML = "";
+  shortcuts = [];
+  editingId = null;
+  $("sidebarList").innerHTML = "";
+  showEditorPanel(false);
 }
 
 function updateAuthUI(user) {
-  const loginForm = $("loginForm");
+  const loginPage = $("loginPage");
+  const dashboard = $("dashboard");
+  const authWrap = $("authWrap");
   const loggedIn = $("loggedIn");
   const userEmail = $("userEmail");
-  const formWrap = $("shortcutForm");
-  const btnAddFolder = $("btnAddFolder");
   if (user) {
-    if (loginForm) loginForm.classList.add("hidden");
+    if (loginPage) loginPage.classList.add("hidden");
+    if (dashboard) dashboard.classList.remove("hidden");
+    if (authWrap) authWrap.style.display = "";
     if (loggedIn) loggedIn.classList.remove("hidden");
     if (userEmail) userEmail.textContent = user.email || "";
-    if (formWrap) formWrap.classList.remove("hidden");
-    if (btnAddFolder) btnAddFolder.classList.remove("hidden");
   } else {
-    if (loginForm) loginForm.classList.remove("hidden");
+    if (loginPage) loginPage.classList.remove("hidden");
+    if (dashboard) dashboard.classList.add("hidden");
+    if (authWrap) authWrap.style.display = "none";
     if (loggedIn) loggedIn.classList.add("hidden");
     if (userEmail) userEmail.textContent = "";
-    if (formWrap) formWrap.classList.add("hidden");
-    if (btnAddFolder) btnAddFolder.classList.add("hidden");
   }
 }
 
@@ -189,17 +191,6 @@ function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s;
   return div.innerHTML;
-}
-
-function getFolderName(folderId) {
-  if (!folderId) return "—";
-  const f = folders.find((x) => x.id === folderId);
-  return f ? f.name : folderId;
-}
-
-function isFolderEnabled(folderId) {
-  if (enabledFolderIds === null) return true;
-  return enabledFolderIds.includes(folderId);
 }
 
 async function loadEnabledFolders() {
@@ -212,10 +203,181 @@ async function setEnabledFolders(ids) {
   enabledFolderIds = ids;
 }
 
-async function loadFolders() {
-  const listEl = $("folderList");
-  const selectEl = $("folderId");
+function toggleFolderExpand(folderKey) {
+  if (collapsedFolderIds.has(folderKey)) collapsedFolderIds.delete(folderKey);
+  else collapsedFolderIds.add(folderKey);
+  renderSidebar();
+}
+
+async function toggleFolderEnabled(folderId, e) {
+  e.stopPropagation();
+  const allIds = folders.map((f) => f.id);
+  const current = enabledFolderIds === null ? allIds : [...enabledFolderIds];
+  const has = current.includes(folderId);
+  let next = has ? current.filter((id) => id !== folderId) : [...current, folderId].filter((id) => allIds.includes(id));
+  if (next.length === allIds.length) next = null;
+  await setEnabledFolders(next);
+  enabledFolderIds = next;
+  renderSidebar();
+}
+
+function renderSidebar() {
+  const listEl = $("sidebarList");
   if (!listEl) return;
+
+  const byFolder = { "": [] };
+  folders.forEach((f) => { byFolder[f.id] = []; });
+  shortcuts.forEach((s) => {
+    const k = s.folder_id || "";
+    if (!byFolder[k]) byFolder[k] = [];
+    byFolder[k].push(s);
+  });
+  Object.keys(byFolder).forEach((k) => {
+    byFolder[k].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  });
+
+  const allIds = folders.map((f) => f.id);
+  const effectiveEnabled = enabledFolderIds === null ? allIds : enabledFolderIds;
+
+  listEl.innerHTML = "";
+
+  function makeSnippetItem(row, folderKey) {
+    const item = document.createElement("div");
+    item.className = "snippet-item" + (editingId === row.id ? " active" : "");
+    item.dataset.id = row.id;
+    item.dataset.folderKey = folderKey;
+    item.draggable = true;
+    item.innerHTML =
+      '<span class="drag-handle" title="ลากจัดเรียง">⋮⋮</span>' +
+      `<span class="snippet-label">${escapeHtml(row.command_name || "")}</span>` +
+      `<span class="shortcut-pill">${escapeHtml(row.shortcut_key || "")}</span>`;
+    item.querySelector(".drag-handle").addEventListener("click", (e) => e.stopPropagation());
+    item.addEventListener("click", (e) => { if (!e.target.classList.contains("drag-handle")) selectSnippet(row.id); });
+    setupSnippetDrag(item, folderKey);
+    return item;
+  }
+
+  // ทั่วไป (no folder)
+  const block0 = document.createElement("div");
+  block0.className = "folder-block no-folder" + (collapsedFolderIds.has("") ? " collapsed" : " expanded");
+  const header0 = document.createElement("div");
+  header0.className = "folder-header";
+  header0.innerHTML = `<span class="folder-arrow">▼</span><span class="folder-name">ทั่วไป</span>`;
+  header0.addEventListener("click", () => toggleFolderExpand(""));
+  block0.appendChild(header0);
+  const shortcuts0 = document.createElement("div");
+  shortcuts0.className = "folder-shortcuts";
+  (byFolder[""] || []).forEach((row) => shortcuts0.appendChild(makeSnippetItem(row, "")));
+  block0.appendChild(shortcuts0);
+  listEl.appendChild(block0);
+
+  folders.forEach((f) => {
+    const expanded = !collapsedFolderIds.has(f.id);
+    const on = effectiveEnabled.includes(f.id);
+    const block = document.createElement("div");
+    block.className = "folder-block" + (expanded ? " expanded" : " collapsed");
+
+    const header = document.createElement("div");
+    header.className = "folder-header";
+    header.innerHTML =
+      `<span class="folder-arrow">▼</span><span class="folder-name">${escapeHtml(f.name)}</span>` +
+      `<div class="folder-actions">` +
+      `<button type="button" class="folder-btn folder-edit" title="แก้ไขโฟลเดอร์">✏️</button>` +
+      `<button type="button" class="folder-btn folder-delete" title="ลบโฟลเดอร์">🗑</button>` +
+      `<div class="folder-switch ${on ? "on" : ""}" role="button" tabindex="0"></div>` +
+      `</div>`;
+    header.addEventListener("click", (e) => {
+      if (!e.target.closest(".folder-switch") && !e.target.closest(".folder-actions")) toggleFolderExpand(f.id);
+    });
+    header.querySelector(".folder-switch").addEventListener("click", (e) => toggleFolderEnabled(f.id, e));
+    header.querySelector(".folder-edit").addEventListener("click", (e) => { e.stopPropagation(); editFolder(f); });
+    header.querySelector(".folder-delete").addEventListener("click", (e) => { e.stopPropagation(); deleteFolder(f); });
+    block.appendChild(header);
+
+    const shortcutsEl = document.createElement("div");
+    shortcutsEl.className = "folder-shortcuts";
+    (byFolder[f.id] || []).forEach((row) => shortcutsEl.appendChild(makeSnippetItem(row, f.id)));
+    block.appendChild(shortcutsEl);
+    listEl.appendChild(block);
+  });
+}
+
+function setupSnippetDrag(item, folderKey) {
+  item.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("text/plain", item.dataset.id);
+    e.dataTransfer.setData("application/folder-key", folderKey);
+    e.dataTransfer.effectAllowed = "move";
+    item.classList.add("dragging");
+  });
+  item.addEventListener("dragend", () => item.classList.remove("dragging"));
+  item.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const id = e.dataTransfer.getData("text/plain");
+    const fromKey = e.dataTransfer.getData("application/folder-key");
+    if (fromKey !== folderKey || id === item.dataset.id) return;
+    item.classList.add("drop-over");
+  });
+  item.addEventListener("dragleave", () => item.classList.remove("drop-over"));
+  item.addEventListener("drop", (e) => {
+    e.preventDefault();
+    item.classList.remove("drop-over");
+    const draggedId = e.dataTransfer.getData("text/plain");
+    const fromKey = e.dataTransfer.getData("application/folder-key");
+    if (fromKey !== folderKey || draggedId === item.dataset.id) return;
+    const container = item.parentElement;
+    const items = Array.from(container.querySelectorAll(".snippet-item"));
+    const fromIdx = items.findIndex((el) => el.dataset.id === draggedId);
+    const toIdx = items.findIndex((el) => el === item);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const orderedIds = items.map((el) => el.dataset.id);
+    const [moved] = orderedIds.splice(fromIdx, 1);
+    orderedIds.splice(toIdx, 0, moved);
+    updateShortcutOrder(folderKey || null, orderedIds);
+  });
+}
+
+async function updateShortcutOrder(folderId, orderedIds) {
+  try {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await restShortcuts("PATCH", { sort_order: i, updated_at: new Date().toISOString() }, orderedIds[i]);
+    }
+    await loadShortcuts();
+    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+  } catch (e) {
+    showMsg("shortcutListMsg", e.message || "จัดเรียงไม่สำเร็จ", true);
+  }
+}
+
+async function editFolder(f) {
+  const name = prompt("ชื่อโฟลเดอร์", f.name || "");
+  if (name == null || name.trim() === "") return;
+  try {
+    await restFolders("PATCH", { name: name.trim(), updated_at: new Date().toISOString() }, f.id);
+    showMsg("shortcutListMsg", "แก้ไขโฟลเดอร์แล้ว", false);
+    await loadFolders();
+    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+  } catch (e) {
+    showMsg("shortcutListMsg", e.message || "แก้ไขไม่สำเร็จ", true);
+  }
+}
+
+async function deleteFolder(f) {
+  const inFolder = shortcuts.filter((s) => s.folder_id === f.id).length;
+  if (!confirm(`ลบโฟลเดอร์ "${f.name}"?${inFolder > 0 ? " คำลัดในโฟลเดอร์จะย้ายไปอยู่กลุ่ม \"ทั่วไป\"" : ""}`)) return;
+  try {
+    await restFolders("DELETE", null, f.id);
+    showMsg("shortcutListMsg", "ลบโฟลเดอร์แล้ว", false);
+    await loadFolders();
+    await loadShortcuts();
+    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+  } catch (e) {
+    showMsg("shortcutListMsg", e.message || "ลบไม่สำเร็จ", true);
+  }
+}
+
+async function loadFolders() {
+  const selectEl = $("folderId");
   try {
     folders = await fetchFolders();
     await loadEnabledFolders();
@@ -223,29 +385,8 @@ async function loadFolders() {
     folders = [];
   }
 
-  listEl.innerHTML = "";
-  const allIds = folders.map((f) => f.id);
-  const effectiveEnabled = enabledFolderIds === null ? allIds : enabledFolderIds;
-
-  const row0 = document.createElement("div");
-  row0.className = "folder-item no-folder";
-  row0.innerHTML = '<span class="folder-name">ทั่วไป (ไม่มีโฟลเดอร์)</span><span style="color:var(--success); font-size:0.8rem;">ใช้เสมอ</span>';
-  listEl.appendChild(row0);
-
-  folders.forEach((f) => {
-    const on = effectiveEnabled.includes(f.id);
-    const div = document.createElement("div");
-    div.className = "folder-item";
-    div.dataset.folderId = f.id;
-    div.innerHTML = `<span class="folder-name">${escapeHtml(f.name)}</span><div class="switch ${on ? "on" : ""}" role="button" tabindex="0" aria-pressed="${on}"></div>`;
-    const sw = div.querySelector(".switch");
-    sw.addEventListener("click", () => toggleFolder(f.id));
-    listEl.appendChild(div);
-  });
-
   if (selectEl) {
-    const baseLen = selectEl.options.length;
-    for (let i = selectEl.options.length - 1; i >= 1; i--) selectEl.remove(i);
+    while (selectEl.options.length > 1) selectEl.remove(1);
     folders.forEach((f) => {
       const opt = document.createElement("option");
       opt.value = f.id;
@@ -253,16 +394,7 @@ async function loadFolders() {
       selectEl.appendChild(opt);
     });
   }
-}
-
-async function toggleFolder(folderId) {
-  const allIds = folders.map((f) => f.id);
-  const current = enabledFolderIds === null ? allIds : [...enabledFolderIds];
-  const has = current.includes(folderId);
-  let next = has ? current.filter((id) => id !== folderId) : [...current, folderId].filter((id) => allIds.includes(id));
-  if (next.length === allIds.length) next = null;
-  await setEnabledFolders(next);
-  await loadFolders();
+  renderSidebar();
 }
 
 async function addFolder() {
@@ -279,54 +411,66 @@ async function addFolder() {
 }
 
 async function loadShortcuts() {
-  const tbody = $("shortcutTableBody");
-  const loading = $("shortcutListLoading");
-  if (!tbody) return;
-  if (loading) loading.classList.remove("hidden");
   showMsg("shortcutListMsg", "", false);
   try {
-    const data = await fetchShortcuts();
-    const list = Array.isArray(data) ? data : [];
-    tbody.innerHTML = "";
-    list.forEach((row) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(getFolderName(row.folder_id))}</td>
-        <td>${escapeHtml(row.command_name || "")}</td>
-        <td>${escapeHtml(row.shortcut_key || "")}</td>
-        <td class="action-preview">${escapeHtml((row.action_text || "").slice(0, 50))}${(row.action_text || "").length > 50 ? "…" : ""}</td>
-        <td>${row.is_global ? "ใช่" : ""}</td>
-        <td>
-          <button type="button" class="btn-ghost btn-edit">แก้ไข</button>
-          <button type="button" class="btn-danger btn-del">ลบ</button>
-        </td>`;
-      tr.querySelector(".btn-edit").addEventListener("click", () => startEdit(row));
-      tr.querySelector(".btn-del").addEventListener("click", () => deleteShortcut(row.id));
-      tbody.appendChild(tr);
-    });
+    shortcuts = await fetchShortcuts();
+    shortcuts = Array.isArray(shortcuts) ? shortcuts : [];
   } catch (e) {
+    shortcuts = [];
     showMsg("shortcutListMsg", e.message || "โหลดไม่สำเร็จ", true);
-  } finally {
-    if (loading) loading.classList.add("hidden");
+  }
+  renderSidebar();
+}
+
+function showEditorPanel(show) {
+  const panel = $("editorPanel");
+  const empty = $("emptyState");
+  if (show) {
+    panel.classList.add("visible");
+    if (empty) empty.style.display = "none";
+  } else {
+    panel.classList.remove("visible");
+    if (empty) empty.style.display = "flex";
   }
 }
 
-function startEdit(row) {
+function selectSnippet(id) {
+  const row = shortcuts.find((s) => s.id === id);
+  if (!row) return;
+  editingId = id;
   $("editId").value = row.id || "";
   $("folderId").value = row.folder_id || "";
   $("commandName").value = row.command_name || "";
   $("shortcutKey").value = row.shortcut_key || "";
   $("actionText").value = row.action_text || "";
-  $("isGlobal").checked = !!row.is_global;
+  $("btnDeleteShortcut").classList.remove("hidden");
+  showEditorPanel(true);
+  renderSidebar();
 }
 
-function cancelEdit() {
+function startNewSnippet() {
+  editingId = "new";
   $("editId").value = "";
   $("folderId").value = "";
   $("commandName").value = "";
   $("shortcutKey").value = "";
   $("actionText").value = "";
-  $("isGlobal").checked = false;
+  $("btnDeleteShortcut").classList.add("hidden");
+  showEditorPanel(true);
+  renderSidebar();
+  $("commandName").focus();
+}
+
+function cancelEdit() {
+  editingId = null;
+  $("editId").value = "";
+  $("folderId").value = "";
+  $("commandName").value = "";
+  $("shortcutKey").value = "";
+  $("actionText").value = "";
+  showEditorPanel(false);
+  showMsg("shortcutListMsg", "", false);
+  renderSidebar();
 }
 
 async function saveShortcut() {
@@ -335,13 +479,17 @@ async function saveShortcut() {
   const command_name = ($("commandName")?.value || "").trim();
   const shortcut_key = ($("shortcutKey")?.value || "").trim();
   const action_text = ($("actionText")?.value || "").trim();
-  const is_global = $("isGlobal")?.checked ?? false;
   if (!command_name || !shortcut_key) {
-    showMsg("shortcutListMsg", "กรุณาใส่ command name และ shortcut key", true);
+    showMsg("shortcutListMsg", "กรุณาใส่ Label และ Shortcut", true);
     return;
   }
-  const body = { command_name, shortcut_key, action_text, is_global, folder_id };
-  if (id) body.updated_at = new Date().toISOString();
+  const body = { command_name, shortcut_key, action_text, is_global: true, folder_id };
+  if (id) {
+    body.updated_at = new Date().toISOString();
+  } else {
+    const inFolder = shortcuts.filter((s) => (s.folder_id || null) === folder_id);
+    body.sort_order = inFolder.length > 0 ? Math.max(...inFolder.map((s) => s.sort_order ?? 0)) + 1 : 0;
+  }
   try {
     if (id) {
       await restShortcuts("PATCH", body, id);
@@ -350,21 +498,28 @@ async function saveShortcut() {
       await restShortcuts("POST", body);
       showMsg("shortcutListMsg", "เพิ่มแล้ว", false);
     }
-    cancelEdit();
     await loadShortcuts();
     chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+    if (id) selectSnippet(id);
+    else {
+      const newRow = shortcuts.find((s) => s.command_name === command_name && s.shortcut_key === shortcut_key);
+      if (newRow) selectSnippet(newRow.id);
+      else cancelEdit();
+    }
   } catch (e) {
     showMsg("shortcutListMsg", e.message || "บันทึกไม่สำเร็จ", true);
   }
 }
 
-async function deleteShortcut(id) {
-  if (!confirm("ลบรายการนี้?")) return;
+async function deleteShortcut() {
+  const id = ($("editId")?.value || "").trim();
+  if (!id || !confirm("ลบ snippet นี้?")) return;
   try {
     await restShortcuts("DELETE", null, id);
     showMsg("shortcutListMsg", "ลบแล้ว", false);
     await loadShortcuts();
     chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+    cancelEdit();
   } catch (e) {
     showMsg("shortcutListMsg", e.message || "ลบไม่สำเร็จ", true);
   }
@@ -379,9 +534,11 @@ async function init() {
 
   $("btnLogin")?.addEventListener("click", login);
   $("btnLogout")?.addEventListener("click", logout);
-  $("btnSaveShortcut")?.addEventListener("click", saveShortcut);
-  $("btnCancelEdit")?.addEventListener("click", () => { cancelEdit(); showMsg("shortcutListMsg", "", false); });
+  $("btnNewSnippet")?.addEventListener("click", startNewSnippet);
   $("btnAddFolder")?.addEventListener("click", addFolder);
+  $("btnSaveShortcut")?.addEventListener("click", saveShortcut);
+  $("btnCancelEdit")?.addEventListener("click", cancelEdit);
+  $("btnDeleteShortcut")?.addEventListener("click", deleteShortcut);
 }
 
 init();

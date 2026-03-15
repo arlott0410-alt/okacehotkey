@@ -92,7 +92,7 @@ async function loadShortcutsFromSupabase(forceRefresh = false) {
   }
 
   try {
-    const rows = await supabaseFetch(url, anonKey, session, "/shortcuts?select=id,command_name,shortcut_key,action_text,is_global,folder_id", {
+    const rows = await supabaseFetch(url, anonKey, session, "/shortcuts?select=id,command_name,shortcut_key,action_text,is_global,folder_id,sort_order&order=sort_order.asc,command_name.asc", {
       method: "GET",
       headers: { Accept: "application/json" },
     });

@@ -9,20 +9,33 @@
 
   function showLoading() {
     listEl.innerHTML = '<div class="loading">กำลังโหลด...</div>';
+    var emptyMsg = document.getElementById("emptyMsg");
+    if (emptyMsg) emptyMsg.classList.add("hidden");
   }
 
   function renderShortcuts(shortcuts) {
+    const emptyMsg = document.getElementById("emptyMsg");
     listEl.innerHTML = "";
-    if (!shortcuts || shortcuts.length === 0) return;
+    if (!shortcuts || shortcuts.length === 0) {
+      if (emptyMsg) emptyMsg.classList.remove("hidden");
+      return;
+    }
+    if (emptyMsg) emptyMsg.classList.add("hidden");
 
     shortcuts.forEach(function (s) {
       const text = s.action_text || s.content || "";
-      const label = s.shortcut_key || s.command_name || "—";
+      const shortcutKey = s.shortcut_key || "—";
+      const commandName = s.command_name || shortcutKey;
+      const preview = text ? text.slice(0, 80) + (text.length > 80 ? "…" : "") : "";
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "shortcut-item";
-      btn.innerHTML = '<span class="label">' + escapeHtml(label) + "</span>" +
-        (text ? '<div class="preview">' + escapeHtml(text.slice(0, 40)) + (text.length > 40 ? "…" : "") + "</div>" : "");
+      btn.innerHTML =
+        '<div class="label-row">' +
+          '<span class="shortcut-pill">' + escapeHtml(shortcutKey) + "</span>" +
+          '<span class="command-name">' + escapeHtml(commandName) + "</span>" +
+        "</div>" +
+        (preview ? '<div class="preview">' + escapeHtml(preview) + "</div>" : "");
       btn.addEventListener("click", function () {
         insertTextAndClose(text);
       });
@@ -58,6 +71,8 @@
       renderShortcuts(res.data);
     } else {
       listEl.innerHTML = "";
+      var emptyMsg = document.getElementById("emptyMsg");
+      if (emptyMsg) emptyMsg.classList.remove("hidden");
     }
   });
 })();
