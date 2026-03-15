@@ -342,7 +342,7 @@ async function editFolder(f) {
     await restFolders("PATCH", { name: name.trim(), updated_at: new Date().toISOString() }, f.id);
     showMsg("shortcutListMsg", "แก้ไขโฟลเดอร์แล้ว", false);
     await loadFolders();
-    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS", refreshFolders: true }).catch(() => {});
   } catch (e) {
     showMsg("shortcutListMsg", e.message || "แก้ไขไม่สำเร็จ", true);
   }
@@ -360,7 +360,7 @@ async function deleteFolder(f) {
     showMsg("shortcutListMsg", "ลบโฟลเดอร์แล้ว", false);
     await loadFolders();
     await loadShortcuts();
-    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS", refreshFolders: true }).catch(() => {});
   } catch (e) {
     showMsg("shortcutListMsg", e.message || "ลบไม่สำเร็จ", true);
   }
@@ -401,7 +401,7 @@ async function addFolder() {
     await restFolders("POST", { name: name.trim(), sort_order: folders.length });
     showMsg("shortcutListMsg", "เพิ่มโฟลเดอร์แล้ว", false);
     await loadFolders();
-    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS" }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "REFRESH_SHORTCUTS", refreshFolders: true }).catch(() => {});
   } catch (e) {
     showMsg("shortcutListMsg", e.message || "เพิ่มโฟลเดอร์ไม่สำเร็จ", true);
   }

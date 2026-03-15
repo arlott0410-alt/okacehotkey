@@ -59,8 +59,7 @@ async function loadFoldersFromSupabase(forceRefresh = false) {
   const { url, anonKey, session } = await getConfig();
   if (!url || !anonKey) return [];
 
-  const now = Date.now();
-  if (!forceRefresh && inMemoryFolders && now - lastFetchTs < CACHE_DURATION_MS) {
+  if (!forceRefresh && Array.isArray(inMemoryFolders)) {
     return inMemoryFolders;
   }
 
@@ -71,6 +70,7 @@ async function loadFoldersFromSupabase(forceRefresh = false) {
     });
     const list = Array.isArray(rows) ? rows : [];
     inMemoryFolders = list;
+    await chrome.storage.local.set({ [CACHE_KEY_FOLDERS]: list });
     return list;
   } catch (e) {
     console.warn("[BG] loadFoldersFromSupabase error:", e.message);
@@ -150,10 +150,12 @@ async function hydrateFromStorage() {
 }
 
 // ===================== Broadcast shortcuts updated =====================
-async function broadcastShortcutsUpdated() {
-  inMemoryShortcuts = null;
-  inMemoryFolders = null;
-  lastFetchTs = 0;
+async function broadcastShortcutsUpdated(clearCache = true) {
+  if (clearCache) {
+    inMemoryShortcuts = null;
+    inMemoryFolders = null;
+    lastFetchTs = 0;
+  }
   const tabs = await chrome.tabs.query({}).catch(() => []);
   for (const tab of tabs) {
     if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: "SHORTCUTS_UPDATED" }).catch(() => {});
@@ -226,8 +228,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         case "REFRESH_SHORTCUTS": {
           await loadShortcutsFromSupabase(true);
-          await loadFoldersFromSupabase(true);
-          await broadcastShortcutsUpdated();
+          if (msg.refreshFolders) await loadFoldersFromSupabase(true);
+          await broadcastShortcutsUpdated(true);
           sendResponse({ ok: true });
           break;
         }
@@ -242,8 +244,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           } else if (Array.isArray(msg.ids)) {
             await chrome.storage.local.set({ [STORAGE_KEY_ENABLED_FOLDERS]: msg.ids });
           }
-          inMemoryShortcuts = null;
-          await broadcastShortcutsUpdated();
+          await broadcastShortcutsUpdated(false);
           sendResponse({ ok: true });
           break;
         }
