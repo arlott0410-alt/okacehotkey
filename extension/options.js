@@ -225,7 +225,7 @@ function renderSidebar() {
   const listEl = $("sidebarList");
   if (!listEl) return;
 
-  const byFolder = { "": [] };
+  const byFolder = {};
   folders.forEach((f) => { byFolder[f.id] = []; });
   shortcuts.forEach((s) => {
     const k = s.folder_id || "";
@@ -256,20 +256,6 @@ function renderSidebar() {
     setupSnippetDrag(item, folderKey);
     return item;
   }
-
-  // ทั่วไป (no folder)
-  const block0 = document.createElement("div");
-  block0.className = "folder-block no-folder" + (collapsedFolderIds.has("") ? " collapsed" : " expanded");
-  const header0 = document.createElement("div");
-  header0.className = "folder-header";
-  header0.innerHTML = `<span class="folder-arrow">▼</span><span class="folder-name">ทั่วไป</span>`;
-  header0.addEventListener("click", () => toggleFolderExpand(""));
-  block0.appendChild(header0);
-  const shortcuts0 = document.createElement("div");
-  shortcuts0.className = "folder-shortcuts";
-  (byFolder[""] || []).forEach((row) => shortcuts0.appendChild(makeSnippetItem(row, "")));
-  block0.appendChild(shortcuts0);
-  listEl.appendChild(block0);
 
   folders.forEach((f) => {
     const expanded = !collapsedFolderIds.has(f.id);
@@ -364,7 +350,11 @@ async function editFolder(f) {
 
 async function deleteFolder(f) {
   const inFolder = shortcuts.filter((s) => s.folder_id === f.id).length;
-  if (!confirm(`ลบโฟลเดอร์ "${f.name}"?${inFolder > 0 ? " คำลัดในโฟลเดอร์จะย้ายไปอยู่กลุ่ม \"ทั่วไป\"" : ""}`)) return;
+  if (inFolder > 0) {
+    showMsg("shortcutListMsg", "ไม่สามารถลบโฟลเดอร์ที่มีคำลัดได้ กรุณาย้ายหรือลบคำลัดในโฟลเดอร์ก่อน", true);
+    return;
+  }
+  if (!confirm(`ลบโฟลเดอร์ "${f.name}"?`)) return;
   try {
     await restFolders("DELETE", null, f.id);
     showMsg("shortcutListMsg", "ลบโฟลเดอร์แล้ว", false);
@@ -386,13 +376,20 @@ async function loadFolders() {
   }
 
   if (selectEl) {
-    while (selectEl.options.length > 1) selectEl.remove(1);
+    selectEl.innerHTML = "";
     folders.forEach((f) => {
       const opt = document.createElement("option");
       opt.value = f.id;
       opt.textContent = f.name;
       selectEl.appendChild(opt);
     });
+    if (folders.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "— สร้างโฟลเดอร์ก่อน —";
+      opt.disabled = true;
+      selectEl.appendChild(opt);
+    }
   }
   renderSidebar();
 }
@@ -451,7 +448,7 @@ function selectSnippet(id) {
 function startNewSnippet() {
   editingId = "new";
   $("editId").value = "";
-  $("folderId").value = "";
+  $("folderId").value = folders[0] ? folders[0].id : "";
   $("commandName").value = "";
   $("shortcutKey").value = "";
   $("actionText").value = "";
@@ -483,11 +480,15 @@ async function saveShortcut() {
     showMsg("shortcutListMsg", "กรุณาใส่ Label และ Shortcut", true);
     return;
   }
+  if (!folder_id) {
+    showMsg("shortcutListMsg", "กรุณาเลือกโฟลเดอร์", true);
+    return;
+  }
   const body = { command_name, shortcut_key, action_text, is_global: true, folder_id };
   if (id) {
     body.updated_at = new Date().toISOString();
   } else {
-    const inFolder = shortcuts.filter((s) => (s.folder_id || null) === folder_id);
+    const inFolder = shortcuts.filter((s) => s.folder_id === folder_id);
     body.sort_order = inFolder.length > 0 ? Math.max(...inFolder.map((s) => s.sort_order ?? 0)) + 1 : 0;
   }
   try {

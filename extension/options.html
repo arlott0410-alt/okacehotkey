@@ -72,6 +72,7 @@
     .folder-btn { width: 28px; height: 28px; padding: 0; border: none; border-radius: 6px; background: transparent; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; }
     .folder-btn:hover { background: rgba(0,0,0,.08); }
     .folder-delete:hover { background: rgba(207,34,46,.15); }
+    .sidebar-section-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 10px 12px 6px; }
 
     .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--main-bg); }
     .main-content { flex: 1; padding: 24px; overflow-y: auto; }
@@ -169,7 +170,7 @@
             </div>
             <div class="form-row">
               <label>โฟลเดอร์</label>
-              <select id="folderId"><option value="">— ไม่มีโฟลเดอร์ —</option></select>
+              <select id="folderId" required></select>
             </div>
             <div class="form-row">
               <label>ข้อความที่จะแทนที่ (Content)</label>
